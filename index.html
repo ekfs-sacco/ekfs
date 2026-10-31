@@ -1015,7 +1015,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.</p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 31 Oct 2026 · build E</span></p>
   </div>
 </div>
 
@@ -5697,7 +5697,7 @@ async function initMemberView(memberName) {
     if (!eb) { eb = document.createElement('div'); eb.id = 'memberEligBox'; summaryCards.parentNode.insertBefore(eb, summaryCards.nextSibling); }
     const ms = await getCollectionEntriesWithId('tablebanking', 'member-register'), mem = ms.find(x => x.memberName === memberName);
     eb.innerHTML = mem ? memberEligHtml(await lcMemberStatus(mem)) : '';
-  } catch (e) { console.warn('Eligibility box', e); }
+  } catch (e) { console.warn('Eligibility box', e); try { const eb = document.getElementById('memberEligBox'); if (eb) eb.innerHTML = '<div style="margin:12px 0;padding:12px;border-radius:12px;background:#fff3cd;border:1px solid #c9a227;color:#5c4500;font-size:13px;"><b>Loan eligibility</b><br>Could not work it out right now (' + escHtml((e && (e.code || e.message)) || 'error') + '). Pull down to refresh, or ask an official.</div>'; } catch (e2) {} }
   const contribBody = document.getElementById('memberContribBody');
   contribBody.innerHTML = myContribs.length === 0
     ? '<tr><td colspan="3">No contributions recorded yet.</td></tr>'
