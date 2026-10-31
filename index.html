@@ -4111,6 +4111,22 @@ function lcEligibilityHtml(e) {
   }
   return h + '</div>';
 }
+
+function memberEligHtml(e) {
+  const k = v => fmtKES(Number(v) || 0);
+  let h = '<div style="margin:12px 0;padding:14px;border-radius:14px;color:#111;background:' + (e.ok ? '#eaf6ec' : '#fdecea') + ';border:2px solid ' + (e.ok ? '#2e7d32' : '#c62828') + ';">';
+  if (e.ok) {
+    h += '<div style="font-size:12px;font-weight:700;letter-spacing:.5px;color:#1b5e20;">LOAN ELIGIBILITY</div><div style="font-size:20px;font-weight:800;color:#1b5e20;">✔ You are eligible</div>' +
+      '<div style="font-size:26px;font-weight:800;margin:2px 0;">Up to ' + k(e.cap) + '</div>' +
+      '<div style="font-size:13px;color:#333;">Your savings ' + k(e.savings) + ' × ' + e.MULT + ' = ' + k(e.savings * e.MULT) + (e.owed ? ', less ' + k(e.owed) + ' you still owe' : '') + '.' + (e.cap < e.max - 0.5 ? ' The SACCO has limited cash now, so the amount is reduced to ' + k(e.cap) + '.' : '') + '</div>' +
+      (e.pool <= 0 ? '<div style="font-size:13px;margin-top:4px;color:#8a6d00;"><b>The SACCO has no loan funds available right now.</b> Ask an official.</div>' : '') +
+      '<div style="font-size:12px;color:#555;margin-top:6px;">To borrow, apply to the Credit Committee. Each loan is approved after an appraisal.</div>';
+  } else {
+    h += '<div style="font-size:12px;font-weight:700;letter-spacing:.5px;color:#8a1c1c;">LOAN ELIGIBILITY</div><div style="font-size:20px;font-weight:800;color:#8a1c1c;">✘ Not eligible yet</div>' + e.reasons.map(r => '<div style="font-size:14px;margin-top:4px;">• ' + escHtml(r) + '</div>').join('') +
+      '<div style="font-size:12px;color:#555;margin-top:6px;">Keep saving every month and clear any arrears. Ask an official if you have questions.</div>';
+  }
+  return h + '</div>';
+}
 // ================= END SAFE LENDING CAPACITY =================
 
 // ===================== PORTFOLIO QUALITY (DELINQUENCY & NPL) =====================
@@ -5676,6 +5692,12 @@ async function initMemberView(memberName) {
     summaryCards.appendChild(div);
   });
 
+  try {
+    let eb = document.getElementById('memberEligBox');
+    if (!eb) { eb = document.createElement('div'); eb.id = 'memberEligBox'; summaryCards.parentNode.insertBefore(eb, summaryCards.nextSibling); }
+    const ms = await getCollectionEntriesWithId('tablebanking', 'member-register'), mem = ms.find(x => x.memberName === memberName);
+    eb.innerHTML = mem ? memberEligHtml(await lcMemberStatus(mem)) : '';
+  } catch (e) { console.warn('Eligibility box', e); }
   const contribBody = document.getElementById('memberContribBody');
   contribBody.innerHTML = myContribs.length === 0
     ? '<tr><td colspan="3">No contributions recorded yet.</td></tr>'
