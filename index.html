@@ -1654,6 +1654,7 @@ window.addEventListener('pagehide', () => {
 });
 
 signOutBtn.addEventListener('click', () => {
+  try { const bb = document.getElementById('backupBar'); if (bb) bb.remove(); } catch (e) {}
   stopPresence(); try { if (fbAuth) fbAuth.signOut(); } catch (e) {}
   try { setDashView('records'); const _n = document.getElementById('viewNav'); if (_n) _n.style.display = 'none'; } catch (e) {}
   const wasMobilizer = document.body.classList.contains('mobilizer-mode') || document.body.classList.contains('bookkeeper-mode');
@@ -3369,8 +3370,9 @@ async function backupRestore(file) {
 }
 function backupDaysAgo() { try { const t = parseInt(localStorage.getItem('ekfs_last_backup') || '0', 10); return t ? Math.floor((Date.now() - t) / 86400000) : null; } catch (e) { return null; } }
 function backupReminder() {
-  const se = getSession(); if (!se || !['admin', 'chairperson'].includes(se.role)) return;
-  const nav = document.getElementById('viewNav'); if (!nav || document.getElementById('backupBar')) return;
+  const se = getSession(), old = document.getElementById('backupBar');
+  if (!se || !['admin', 'chairperson'].includes(se.role)) { if (old) old.remove(); return; }
+  const nav = document.getElementById('viewNav'); if (!nav || old) return;
   const d = backupDaysAgo(); if (d !== null && d < 30) return;
   try { if (sessionStorage.getItem('ekfs_bk_dismiss')) return; } catch (e) {}
   const bar = document.createElement('div'); bar.id = 'backupBar'; bar.style.cssText = 'background:#fff3cd;border:1px solid #c9a227;color:#5c4500;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;';
