@@ -3299,7 +3299,16 @@ function printDashboardView() {
   }
   openPrintWindow(titles[dbView] || 'Dashboard', pbStamp() + clone.innerHTML + extra);
 }
-function printMemberPortal() {
+async function printMemberPortal() {
+  const se = getSession(), name = se && se.linkedMemberName;
+  try {
+    const ms = await getCollectionEntriesWithId('tablebanking', 'member-register');
+    const m = ms.find(x => x.memberName === name);
+    if (!m) throw new Error('no member');
+    const d = await mpCollect(m);
+    openPrintWindow('Member Statement — ' + name, stmtHtml(d).replace('page-break-after:always', '') + pbStamp());
+    return;
+  } catch (e) { console.warn('Statement fallback', e); }
   const c = document.getElementById('memberViewContainer');
   if (!c) return;
   const clone = c.cloneNode(true);
