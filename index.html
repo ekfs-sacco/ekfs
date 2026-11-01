@@ -1019,7 +1019,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 1 Nov 2026 · build Q</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 1 Nov 2026 · build R</span></p>
   </div>
 </div>
 
@@ -1516,7 +1516,7 @@ loginForm.addEventListener('submit', async (e) => {
       }
     }
     if (good) {
-      if (userDoc.paused) { try { if (fbAuth) await fbAuth.signOut(); } catch (e) {} loginError.textContent = 'This account has been paused. Contact the administrator.'; return; }
+      if (userDoc.paused) { auditLog('blocked login', 'app_users', '', 'Account paused · ' + loginDevice(), { user: username, role: 'paused' }); try { if (fbAuth) await fbAuth.signOut(); } catch (e) {} loginError.textContent = 'This account has been paused. Contact the administrator.'; return; }
       const role = userDoc.role === undefined ? 'admin' : userDoc.role;
       const allowedRoles = ROLE_ALLOWED[selectedLoginRole] || [selectedLoginRole];
       if (!allowedRoles.includes(role)) {
@@ -1527,12 +1527,16 @@ loginForm.addEventListener('submit', async (e) => {
       const linkedMemberName = userDoc.linkedMemberName || '';
       localStorage.setItem(SESSION_KEY, JSON.stringify({ username: username, role: role, linkedMemberName: linkedMemberName }));
       loginError.textContent = '';
+      auditLog('login', 'app_users', snapshot.docs[0].id, loginDevice());
+      try { userRef.update({ lastLogin: new Date().toISOString(), loginCount: (userDoc.loginCount || 0) + 1 }); } catch (e) {}
+      try { sessionStorage.setItem('ekfs_login_logged', '1'); } catch (e) {}
       applyRoleUI(role);
       startPresence(username);
       if ((role === 'mobilizer' || role === 'bookkeeper') && appInitialized) { location.reload(); return; }
       showApp();
     } else {
       try { if (signed.ok && fbAuth) await fbAuth.signOut(); } catch (e) {}
+      auditLog('failed login', 'app_users', '', 'Wrong password · ' + loginDevice(), { user: username, role: 'attempt' });
       loginError.textContent = 'Incorrect username or password.';
     }
   } catch (err) {
@@ -1551,6 +1555,7 @@ setupForm.addEventListener('submit', async (e) => {
     await db.collection(USERS_COLLECTION).add({ username: username, password: password, role: 'admin', authMigrated: !!sver, authVer: sver || 1 });
     localStorage.setItem(SESSION_KEY, JSON.stringify({ username: username, role: 'admin' }));
     applyRoleUI('admin');
+    auditLog('login', 'app_users', '', 'First admin account created · ' + loginDevice());
     startPresence(username);
     showApp();
   } catch (err) {
@@ -1663,6 +1668,8 @@ window.addEventListener('pagehide', () => {
 });
 
 signOutBtn.addEventListener('click', () => {
+  auditLog('logout', 'app_users', '', loginDevice());
+  try { sessionStorage.removeItem('ekfs_login_logged'); } catch (e) {}
   try { const bb = document.getElementById('backupBar'); if (bb) bb.remove(); } catch (e) {}
   stopPresence(); try { if (fbAuth) fbAuth.signOut(); } catch (e) {}
   try { setDashView('records'); const _n = document.getElementById('viewNav'); if (_n) _n.style.display = 'none'; } catch (e) {}
@@ -1713,9 +1720,11 @@ addUserForm.addEventListener('submit', async (e) => {
     try { ver = await fbCreateAccount(username, password, prev ? (prev.authVer || 1) : 1, true); } catch (e) { console.warn('Secure account not created', e); secureNote = ' (secure sign-in account could not be created — it will be created at their first login)'; }
     if (snapshot.empty) {
       await db.collection(USERS_COLLECTION).add({ username: username, password: password, role: role, linkedMemberName: linkedMemberName, authMigrated: !!ver, authVer: ver || 1 });
+      auditLog('account created', 'app_users', '', username + ' · ' + role + (linkedMemberName ? ' · ' + linkedMemberName : ''));
     } else {
       const upd = { password: password, role: role, linkedMemberName: linkedMemberName }; if (ver) { upd.authVer = ver; upd.authMigrated = true; }
       await db.collection(USERS_COLLECTION).doc(snapshot.docs[0].id).update(upd);
+      auditLog('account updated', 'app_users', snapshot.docs[0].id, username + ' · ' + role + (linkedMemberName ? ' · ' + linkedMemberName : ''));
     }
     manageStatusMsg.textContent = 'Saved.' + secureNote;
     addUserForm.reset();
@@ -1833,7 +1842,7 @@ async function renderUsersTable() {
       const isPaused = !!data.paused;
       const tr = document.createElement('tr');
       const tdUser = document.createElement('td');
-      tdUser.textContent = data.username;
+      tdUser.innerHTML = escHtml(data.username) + '<div style="font-size:11px;color:#777;">' + (data.lastLogin ? 'Last login ' + escHtml(fmtStamp(data.lastLogin)) + ' · ' + (data.loginCount || 0) + ' logins' : 'Never logged in') + '</div>';
       const tdPass = document.createElement('td');
       tdPass.textContent = data.password ? data.password : (data.authMigrated ? '•••••• (secure)' : '—');
 
@@ -1848,6 +1857,7 @@ async function renderUsersTable() {
       });
       roleSelect.onchange = async () => {
         await db.collection(USERS_COLLECTION).doc(doc.id).update({ role: roleSelect.value });
+        auditLog('role changed', 'app_users', doc.id, data.username + ': ' + role + ' → ' + roleSelect.value);
         renderUsersTable();
       };
       tdRole.appendChild(roleSelect);
@@ -1866,6 +1876,7 @@ async function renderUsersTable() {
       pauseBtn.className = isPaused ? 'btn-primary btn-small' : 'btn-secondary btn-small';
       pauseBtn.onclick = async () => {
         await db.collection(USERS_COLLECTION).doc(doc.id).update({ paused: !isPaused });
+        auditLog(isPaused ? 'account resumed' : 'account paused', 'app_users', doc.id, data.username);
         renderUsersTable();
       };
       const delBtn = document.createElement('button');
@@ -1874,6 +1885,7 @@ async function renderUsersTable() {
       delBtn.onclick = async () => {
         if (!confirm('Remove login access for "' + data.username + '"?')) return;
         await db.collection(USERS_COLLECTION).doc(doc.id).delete();
+        auditLog('account deleted', 'app_users', doc.id, data.username);
         renderUsersTable();
       };
       const resetBtn = document.createElement('button');
@@ -1923,6 +1935,7 @@ function getSession() {
       applyRoleUI(session.role);
       startPresence(session.username);
       showApp();
+      try { if (!sessionStorage.getItem('ekfs_login_logged')) { sessionStorage.setItem('ekfs_login_logged', '1'); auditLog('session resumed', 'app_users', '', 'Opened the app while still signed in · ' + loginDevice()); } } catch (e) {}
     } else {
       showLandingPage();
     }
@@ -3581,6 +3594,7 @@ function toolsOpen() {
     '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;"><b>📅 Monthly report pack</b><div style="margin:4px 0;"><input type="month" id="tMonth" value="' + new Date().toISOString().slice(0, 7) + '"> <button class="btn-primary btn-small" id="tPack">Print report</button></div></div>' +
     (isAdmin ? '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;"><b>🔒 Security</b> <span style="font-size:12px;color:#555;">Secure sign-in &amp; database lock</span><div style="margin:4px 0;"><button class="btn-primary btn-small" id="tSec">Open security steps</button></div></div>' : '') +
     (['admin', 'chairperson'].includes(se && se.role) ? '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;"><b>✅ Approvals</b> <span style="font-size:12px;color:#555;">Edits and deletes asked for by officials</span><div style="margin:4px 0;"><button class="btn-primary btn-small" id="tAp">Open approvals' + (window.__chgPending ? ' (' + window.__chgPending + ')' : '') + '</button> <button class="btn-secondary btn-small" id="tAu">Audit log</button></div></div>' : '') +
+    (['admin', 'chairperson'].includes(se && se.role) ? '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;"><b>🔑 Login history</b> <span style="font-size:12px;color:#555;">Who signed in, when, and from what phone</span><div style="margin:4px 0;"><button class="btn-primary btn-small" id="tLg">Open login history</button></div></div>' : '') +
     '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;"><b>📲 Reminders</b><div style="font-size:12px;color:#555;margin:3px 0;">Overdue, due soon, or not saved this month — message ready for WhatsApp or SMS.</div><button class="btn-primary btn-small" id="tRem">Open reminders</button></div>' +
     '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;"><b>🗓 Instalments due</b><div style="margin:4px 0;"><input type="month" id="tDueM" value="' + new Date().toISOString().slice(0, 7) + '"> <button class="btn-primary btn-small" id="tDue">Print list</button></div></div>' +
     '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;"><b>🧾 Member statements</b><div style="font-size:12px;color:#555;margin:3px 0;">One statement per active member. For one member, open their profile and tap Statement.</div><button class="btn-primary btn-small" id="tStm">Print all statements</button></div>' +
@@ -3592,6 +3606,7 @@ function toolsOpen() {
   q('#tPack').onclick = busy(q('#tPack'), 'Preparing…', async () => { const m = q('#tMonth').value; if (!m) return alert('Choose a month.'); openPrintWindow('Monthly Report ' + m, await monthlyPack(m)); });
   q('#tDue').onclick = busy(q('#tDue'), 'Preparing…', async () => { const m = q('#tDueM').value; if (!m) return alert('Choose a month.'); openPrintWindow('Instalments due ' + m, await schedDueReport(m)); });
   q('#tRem').onclick = remOpen;
+  if (q('#tLg')) q('#tLg').onclick = () => auditOpen('logins');
   if (q('#tSec')) q('#tSec').onclick = secOpen;
   if (q('#tAp')) { q('#tAp').onclick = chgOpenApprovals; q('#tAu').onclick = auditOpen; }
   q('#tStm').onclick = busy(q('#tStm'), 'Preparing…', stmtPrintAll);
@@ -3690,6 +3705,8 @@ async function settleOpen(member) {
 
 // ===================== AUDIT LOG & CHANGE APPROVALS =====================
 var AUDIT_COL = 'ekfs_audit', CHG_COL = 'ekfs_change_requests';
+function fmtStamp(iso) { const d = new Date(iso); if (isNaN(d)) return String(iso || '').slice(0, 16).replace('T', ' '); const z = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate()) + ' ' + z(d.getHours()) + ':' + z(d.getMinutes()); }
+function loginDevice() { try { const ua = navigator.userAgent || '', os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iPhone/iPad' : /Windows/i.test(ua) ? 'Windows' : /Mac/i.test(ua) ? 'Mac' : /Linux/i.test(ua) ? 'Linux' : 'device', br = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'browser'; const app = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) ? ' · installed app' : ''; return os + ' · ' + br + app; } catch (e) { return ''; } }
 function auditWho() { const se = getSession(); return se ? { user: se.username, role: se.role } : { user: '?', role: '?' }; }
 function auditSummary(data) {
   if (!data) return '';
@@ -3728,19 +3745,24 @@ async function chgApply(req, approve, note) {
 async function chgOpenApprovals() {
   const snap = await db.collection(CHG_COL).get(); const reqs = snap.docs.map(d => Object.assign({ __id: d.id }, d.data())).sort((a, b) => String(b.time).localeCompare(String(a.time)));
   const pend = reqs.filter(r => r.status === 'Pending'), done = reqs.filter(r => r.status !== 'Pending').slice(0, 15);
-  const card = r => '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;margin-bottom:8px;font-size:13px;"><b>' + (r.type === 'delete' ? '🗑 Delete' : '✎ Edit') + ' — ' + escHtml(r.recordTitle) + '</b><div style="color:#555;">' + escHtml(r.label) + '</div><div style="font-size:12px;color:#777;">Requested by ' + escHtml(r.requestedBy) + ' on ' + escHtml(String(r.time).slice(0, 16).replace('T', ' ')) + '</div>' +
+  const card = r => '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;margin-bottom:8px;font-size:13px;"><b>' + (r.type === 'delete' ? '🗑 Delete' : '✎ Edit') + ' — ' + escHtml(r.recordTitle) + '</b><div style="color:#555;">' + escHtml(r.label) + '</div><div style="font-size:12px;color:#777;">Requested by ' + escHtml(r.requestedBy) + ' on ' + escHtml(fmtStamp(r.time)) + '</div>' +
     (r.type === 'delete' ? '<div style="margin:4px 0;">Reason: <i>' + escHtml(r.reason) + '</i></div>' : '<table style="width:100%;border-collapse:collapse;font-size:12px;margin:4px 0;"><tr><th style="text-align:left;border:1px solid #ddd;padding:3px;">Field</th><th style="text-align:left;border:1px solid #ddd;padding:3px;">Now</th><th style="text-align:left;border:1px solid #ddd;padding:3px;">Change to</th></tr>' + (r.diff || []).map(x => '<tr><td style="border:1px solid #ddd;padding:3px;">' + escHtml(x.k) + '</td><td style="border:1px solid #ddd;padding:3px;">' + escHtml(x.from) + '</td><td style="border:1px solid #ddd;padding:3px;color:#1b5e20;"><b>' + escHtml(x.to) + '</b></td></tr>').join('') + '</table>') +
     (r.status === 'Pending' ? '<button class="btn-primary btn-small" data-ap="' + r.__id + '">Approve</button> <button class="btn-danger btn-small" data-rj="' + r.__id + '">Reject</button>' : '<b style="color:' + (r.status === 'Approved' ? '#2e7d32' : '#c62828') + '">' + r.status + '</b> by ' + escHtml(r.decidedBy || '') + (r.decisionNote ? ' — ' + escHtml(r.decisionNote) : '')) + '</div>';
   const ov = toolsOverlay('Approvals', (pend.length ? pend.map(card).join('') : '<p style="color:#2e7d32">✔ Nothing waiting for approval.</p>') + (done.length ? '<h4 style="margin:12px 0 4px;">Recently decided</h4>' + done.map(card).join('') : ''));
   ov.querySelectorAll('[data-ap]').forEach(b => b.onclick = async () => { const r = reqs.find(x => x.__id === b.dataset.ap); if (!confirm('Approve and apply this ' + r.type + '?')) return; await chgApply(r, true, ''); ov.remove(); chgOpenApprovals(); });
   ov.querySelectorAll('[data-rj]').forEach(b => b.onclick = async () => { const r = reqs.find(x => x.__id === b.dataset.rj); const n = prompt('Reason for rejecting (optional)'); if (n === null) return; await chgApply(r, false, n); ov.remove(); chgOpenApprovals(); });
 }
-async function auditOpen() {
+async function auditOpen(startMode) {
   const snap = await db.collection(AUDIT_COL).get(); const rows = snap.docs.map(d => d.data()).sort((a, b) => String(b.time).localeCompare(String(a.time))).slice(0, 400);
   const td = 'style="border:1px solid #ccc;padding:3px 5px;vertical-align:top;"';
-  const tbl = list => '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th ' + td + '>When</th><th ' + td + '>Who</th><th ' + td + '>Action</th><th ' + td + '>Record</th><th ' + td + '>Details</th></tr>' + list.map(r => '<tr><td ' + td + '>' + escHtml(String(r.time).slice(0, 16).replace('T', ' ')) + '</td><td ' + td + '>' + escHtml(r.user) + ' <span style="color:#888">(' + escHtml(r.role) + ')</span></td><td ' + td + '>' + escHtml(r.action) + '</td><td ' + td + '>' + escHtml(r.recordTitle) + '</td><td ' + td + '>' + escHtml(r.summary) + (r.changes ? '<br><span style="color:#8a4b00">' + escHtml(r.changes) + '</span>' : '') + '</td></tr>').join('') + '</table>';
-  const ov = toolsOverlay('Audit log (latest ' + rows.length + ')', '<input id="auQ" placeholder="Filter by name, user, record or action…" style="width:100%;padding:6px;margin-bottom:6px;box-sizing:border-box;"> <button class="btn-primary btn-small" id="auP">🖨 Print</button><div id="auT" style="margin-top:6px;overflow-x:auto;">' + tbl(rows) + '</div>');
-  const cur = () => { const q = ov.querySelector('#auQ').value.toLowerCase(); return q ? rows.filter(r => JSON.stringify(r).toLowerCase().includes(q)) : rows; };
+  const tbl = list => '<table style="width:100%;border-collapse:collapse;font-size:12px;"><tr><th ' + td + '>When</th><th ' + td + '>Who</th><th ' + td + '>Action</th><th ' + td + '>Record</th><th ' + td + '>Details</th></tr>' + list.map(r => '<tr><td ' + td + '>' + escHtml(fmtStamp(r.time)) + '</td><td ' + td + '>' + escHtml(r.user) + ' <span style="color:#888">(' + escHtml(r.role) + ')</span></td><td ' + td + '>' + escHtml(r.action) + '</td><td ' + td + '>' + escHtml(r.recordTitle) + '</td><td ' + td + '>' + escHtml(r.summary) + (r.changes ? '<br><span style="color:#8a4b00">' + escHtml(r.changes) + '</span>' : '') + '</td></tr>').join('') + '</table>';
+  const LOGACT = ['login', 'logout', 'failed login', 'blocked login', 'session resumed'];
+  const ov = toolsOverlay('Audit log (latest ' + rows.length + ')', '<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;"><button class="btn-primary btn-small" data-m="all">All</button><button class="btn-secondary btn-small" data-m="logins">🔑 Logins</button><button class="btn-secondary btn-small" data-m="edits">✎ Edits &amp; changes</button></div><input id="auQ" placeholder="Filter by name, user, record or action…" style="width:100%;padding:6px;margin-bottom:6px;box-sizing:border-box;"> <button class="btn-primary btn-small" id="auP">🖨 Print</button><div id="auT" style="margin-top:6px;overflow-x:auto;">' + tbl(rows) + '</div>');
+  let mode = typeof startMode === 'string' ? startMode : 'all';
+  const pre = r => mode === 'logins' ? LOGACT.includes(r.action) : mode === 'edits' ? !LOGACT.includes(r.action) : true;
+  const cur = () => { const q = ov.querySelector('#auQ').value.toLowerCase(), base = rows.filter(pre); return q ? base.filter(r => JSON.stringify(r).toLowerCase().includes(q)) : base; };
+  ov.querySelectorAll('button[data-m]').forEach(b => b.onclick = () => { mode = b.dataset.m; ov.querySelectorAll('button[data-m]').forEach(x => x.className = x === b ? 'btn-primary btn-small' : 'btn-secondary btn-small'); ov.querySelector('#auT').innerHTML = tbl(cur()); });
+  ov.querySelectorAll('button[data-m]').forEach(x => x.className = x.dataset.m === mode ? 'btn-primary btn-small' : 'btn-secondary btn-small'); ov.querySelector('#auT').innerHTML = tbl(cur());
   ov.querySelector('#auQ').oninput = () => { ov.querySelector('#auT').innerHTML = tbl(cur()); };
   ov.querySelector('#auP').onclick = () => openPrintWindow('Audit log', tbl(cur()) + pbStamp());
 }
