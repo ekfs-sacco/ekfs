@@ -1,5 +1,5 @@
-// EKFS offline support — build F
-const CACHE = 'ekfs-shell-F';
+// EKFS offline support — build G
+const CACHE = 'ekfs-shell-G';
 const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 const SDK = ['app', 'firestore', 'auth'].map(n => 'https://www.gstatic.com/firebasejs/10.12.2/firebase-' + n + '-compat.js');
 self.addEventListener('install', e => {
