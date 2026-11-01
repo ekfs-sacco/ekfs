@@ -643,6 +643,15 @@
   @media (max-width: 700px) {
     .finance-panel { grid-template-columns: 1fr; }
   }
+  #memberSummaryCards { display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8px !important; }
+  #memberSummaryCards .fin-card { padding: 10px 8px !important; margin: 0 !important; min-height: 0 !important; }
+  #memberSummaryCards .fin-num { font-size: 17px !important; }
+  #memberSummaryCards .fin-lbl { font-size: 11px !important; }
+  #memberViewContainer.mh-dark { filter: invert(1) hue-rotate(180deg); background: #fff; border-radius: 12px; }
+  #memberViewContainer.mh-dark img { filter: invert(1) hue-rotate(180deg); }
+  #memberViewContainer.mh-big { zoom: 1.15; }
+  #memberViewContainer.mh-bigger { zoom: 1.3; }
+  .mhTool { padding: 7px 12px; border-radius: 16px; border: 1px solid #1b5e20; background: #fff; color: #1b5e20; font-weight: 700; font-size: 13px; }
   .fin-card {
     border-radius: 10px;
     padding: 16px 18px;
@@ -1019,7 +1028,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 1 Nov 2026 · build R</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 1 Nov 2026 · build S</span></p>
   </div>
 </div>
 
@@ -4266,10 +4275,11 @@ function memberEligHtml(e) {
   const k = v => fmtKES(Number(v) || 0);
   let h = '<div style="margin:12px 0;padding:14px;border-radius:14px;color:#111;background:' + (e.ok ? '#eaf6ec' : '#fdecea') + ';border:2px solid ' + (e.ok ? '#2e7d32' : '#c62828') + ';">';
   if (e.ok) {
-    h += '<div style="font-size:12px;font-weight:700;letter-spacing:.5px;color:#1b5e20;">LOAN ELIGIBILITY</div><div style="font-size:20px;font-weight:800;color:#1b5e20;">✔ You are eligible</div>' +
-      '<div style="font-size:26px;font-weight:800;margin:2px 0;">Up to ' + k(e.cap) + '</div>' +
+    const noCash = !(e.cap > 0.5);
+    h += '<div style="font-size:12px;font-weight:700;letter-spacing:.5px;color:#1b5e20;">LOAN ELIGIBILITY</div><div style="font-size:20px;font-weight:800;color:#1b5e20;">✔ ' + (noCash ? 'You qualify for a loan' : 'You are eligible') + '</div>' +
+      (noCash ? '<div style="font-size:15px;font-weight:700;margin:2px 0;color:#8a6d00;">Your limit is ' + k(e.max) + ', but the SACCO has no money to lend right now. Please wait for the next round.</div>' : '<div style="font-size:26px;font-weight:800;margin:2px 0;">Up to ' + k(e.cap) + '</div>') +
       '<div style="font-size:13px;color:#333;">Your savings ' + k(e.savings) + ' × ' + e.MULT + ' = ' + k(e.savings * e.MULT) + (e.owed ? ', less ' + k(e.owed) + ' you still owe' : '') + '.' + (e.cap < e.max - 0.5 ? ' The SACCO has limited cash now, so the amount is reduced to ' + k(e.cap) + '.' : '') + '</div>' +
-      (e.pool <= 0 ? '<div style="font-size:13px;margin-top:4px;color:#8a6d00;"><b>The SACCO has no loan funds available right now.</b> Ask an official.</div>' : '') +
+      (e.pool <= 0 && !noCash ? '<div style="font-size:13px;margin-top:4px;color:#8a6d00;"><b>The SACCO has little loan money available right now.</b> Ask an official.</div>' : '') +
       '<div style="font-size:12px;color:#555;margin-top:6px;">To borrow, apply to the Credit Committee. Each loan is approved after an appraisal.</div>';
   } else {
     h += '<div style="font-size:12px;font-weight:700;letter-spacing:.5px;color:#8a1c1c;">LOAN ELIGIBILITY</div><div style="font-size:20px;font-weight:800;color:#8a1c1c;">✘ Not eligible yet</div>' + e.reasons.map(r => '<div style="font-size:14px;margin-top:4px;">• ' + escHtml(r) + '</div>').join('') +
@@ -6020,110 +6030,193 @@ function startMemberLedgerWatchers(memberName) {
 // ===================== MEMBER PORTAL — HOME CARDS =====================
 const PORTAL_PAY = { paybill: '400200', account: '1008085', bank: 'Cooperative Bank', name: 'East Kamagak Farmers SACCO' };
 const PORTAL_GOAL = { savings: 20000, shares: 6000, monthMin: 200 };
+const PORTAL_SW = {
+  'Welcome': 'Karibu', 'Member since': 'Mwanachama tangu', '● Good standing': '● Hali nzuri', '● Needs attention — loan instalment overdue': '● Inahitaji uangalizi — malipo ya mkopo yamechelewa', '● Status: ': '● Hali: ',
+  'NEXT MEETING': 'MKUTANO UJAO', 'NOTICES FROM THE SACCO': 'TANGAZO KUTOKA SACCO', 'Today': 'Leo', 'Tomorrow': 'Kesho', 'in': 'baada ya', 'days': 'siku', 'day': 'siku',
+  'MY SAVINGS GOAL': 'LENGO LANGU LA AKIBA', 'of': 'kati ya', 'done': 'imekamilika', 'to go': 'zimebaki', 'Goal reached — well done!': 'Umefikia lengo — hongera!', 'savings': 'akiba', 'share capital': 'hisa',
+  'LAST 12 MONTHS — saved in': 'MIEZI 12 ILIYOPITA — uliweka akiba miezi', 'Green = saved': 'Kijani = uliweka', 'or more that month.': 'au zaidi mwezi huo.',
+  'MY LOAN': 'MKOPO WANGU', 'You owe': 'Unadaiwa', 'Repaid': 'Umelipa', 'taken': 'ulichukua', 'OVERDUE INSTALMENT': 'MALIPO YALIYOCHELEWA', 'NEXT INSTALMENT': 'MALIPO YAJAYO', 'by': 'kabla ya', 'Overdue by': 'Umechelewa kwa', 'days left': 'siku zimebaki', 'Due today': 'Inalipwa leo',
+  'You have no running loan.': 'Huna mkopo unaoendelea.', 'HOW TO PAY (SAVINGS, SHARES, LOAN)': 'JINSI YA KULIPA (AKIBA, HISA, MKOPO)', 'Business number (Paybill)': 'Namba ya biashara (Paybill)', 'Account number': 'Namba ya akaunti', 'Copy': 'Nakili', 'Copied ✓': 'Imenakiliwa ✓',
+  'LOAN CALCULATOR': 'KIKOKOTOO CHA MKOPO', 'Amount you want (KES)': 'Kiasi unachotaka (KES)', 'Months to repay': 'Miezi ya kulipa', 'You would pay about': 'Ungelipa takriban', 'a month for': 'kwa mwezi kwa miezi', 'MY DETAILS': 'TAARIFA ZANGU', 'Ask the SACCO to correct my details': 'Omba SACCO irekebishe taarifa zangu',
+  'MY BADGES': 'NISHANI ZANGU', 'RECENT ACTIVITY': 'SHUGHULI ZA HIVI KARIBUNI', 'Show full history': 'Onyesha historia kamili', 'Hide full history': 'Ficha historia kamili', 'Share': 'Shiriki', 'Print': 'Chapisha',
+  'We received your': 'Tumepokea', 'on': 'tarehe', 'Saving': 'Akiba', 'Share (contribution)': 'Hisa', 'Loan repayment': 'Malipo ya mkopo', 'Fine': 'Faini', 'MY SAVING PLAN': 'MPANGO WANGU WA AKIBA', 'Member number': 'Namba ya mwanachama', 'Phone': 'Simu', 'Next of kin': 'Jamaa wa karibu',
+  'No activity yet.': 'Bado hakuna shughuli.', 'Registration Fee': 'Ada ya usajili', 'Share Capital': 'Mtaji wa hisa', 'Savings': 'Akiba', 'Outstanding Loan': 'Mkopo unaodaiwa', 'Net Contribution': 'Mchango halisi'
+};
+var mhLang = 'en';
+try { mhLang = localStorage.getItem('ekfs_portal_lang') || 'en'; } catch (e) {}
+function t(s) { return mhLang === 'sw' && PORTAL_SW[s] ? PORTAL_SW[s] : s; }
+function mhPrefGet(k, d) { try { return localStorage.getItem('ekfs_portal_' + k) || d; } catch (e) { return d; } }
+function mhPrefSet(k, v) { try { localStorage.setItem('ekfs_portal_' + k, v); } catch (e) {} }
+function mhApplyLook() {
+  const c = document.getElementById('memberViewContainer'); if (!c) return;
+  c.classList.toggle('mh-dark', mhPrefGet('dark', '0') === '1');
+  c.classList.remove('mh-big', 'mh-bigger'); const sz = mhPrefGet('size', '0'); if (sz === '1') c.classList.add('mh-big'); if (sz === '2') c.classList.add('mh-bigger');
+}
 function mhCopy(txt, btn) {
-  const done = () => { const o = btn.textContent; btn.textContent = 'Copied ✓'; setTimeout(() => { btn.textContent = o; }, 1500); };
+  const done = () => { const o = btn.textContent; btn.textContent = t('Copied ✓'); setTimeout(() => { btn.textContent = o; }, 1500); };
   try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt).then(done, () => mhCopyOld(txt, done)); return; } } catch (e) {}
   mhCopyOld(txt, done);
 }
-function mhCopyOld(txt, done) { try { const t = document.createElement('textarea'); t.value = txt; t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); done(); } catch (e) { alert('Copy this: ' + txt); } }
-function mhCard(inner, extra) { return '<div style="background:#fff;border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 1px 4px rgba(0,0,0,.08);color:#111;' + (extra || '') + '">' + inner + '</div>'; }
-function mhTitle(icon, t) { return '<div style="font-size:12px;font-weight:800;letter-spacing:.6px;color:#1b5e20;margin-bottom:8px;">' + icon + ' ' + t + '</div>'; }
+function mhCopyOld(txt, done) { try { const x = document.createElement('textarea'); x.value = txt; x.style.position = 'fixed'; x.style.opacity = '0'; document.body.appendChild(x); x.select(); document.execCommand('copy'); x.remove(); done(); } catch (e) { alert('Copy this: ' + txt); } }
+function mhCard(inner, extra) { return '<div class="mh-card" style="background:#fff;border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 1px 4px rgba(0,0,0,.08);color:#111;' + (extra || '') + '">' + inner + '</div>'; }
+function mhTitle(icon, tt) { return '<div style="font-size:12px;font-weight:800;letter-spacing:.6px;color:#1b5e20;margin-bottom:8px;">' + icon + ' ' + tt + '</div>'; }
 function mhBar(pct, color) { pct = Math.max(0, Math.min(100, pct)); return '<div style="height:12px;background:#e3ebe5;border-radius:8px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:8px;"></div></div>'; }
+function mhMonthKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
 function mhMonths(contribs) {
   const now = new Date(), out = [];
-  for (let i = 11; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); out.push({ key: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'), lbl: d.toLocaleString('en', { month: 'short' }), amt: 0 }); }
+  for (let i = 11; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); out.push({ key: mhMonthKey(d), lbl: d.toLocaleString(mhLang === 'sw' ? 'sw' : 'en', { month: 'short' }), amt: 0 }); }
   contribs.filter(c => c.contributionType !== 'Share').forEach(c => { const k = String(c.date || '').slice(0, 7), m = out.find(x => x.key === k); if (m) m.amt += parseFloat(c.amount) || 0; });
   return out;
 }
 function mhShort(n) { return n >= 1000 ? (Math.round(n / 100) / 10) + 'k' : String(Math.round(n)); }
+function mhStreak(contribs) {
+  const ok = new Set(), by = {};
+  contribs.filter(c => c.contributionType !== 'Share').forEach(c => { const k = String(c.date || '').slice(0, 7); if (k) by[k] = (by[k] || 0) + (parseFloat(c.amount) || 0); });
+  Object.keys(by).forEach(k => { if (by[k] >= PORTAL_GOAL.monthMin) ok.add(k); });
+  let d = new Date(); d = new Date(d.getFullYear(), d.getMonth(), 1);
+  if (!ok.has(mhMonthKey(d))) d = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+  let n = 0; while (ok.has(mhMonthKey(d))) { n++; d = new Date(d.getFullYear(), d.getMonth() - 1, 1); }
+  return n;
+}
 async function memberHomeRender(memberName) {
   const container = document.getElementById('memberViewContainer'), summary = document.getElementById('memberSummaryCards');
   const mk = id => { let e = document.getElementById(id); if (!e) { e = document.createElement('div'); e.id = id; } return e; };
-  const top = mk('memberHomeTop'), mid = mk('memberHomeMid');
+  const top = mk('memberHomeTop'), mid = mk('memberHomeMid'), act = mk('memberHomeAct');
   if (!top.parentNode) container.insertBefore(top, summary);
   if (!mid.parentNode) { const eb = document.getElementById('memberEligBox'); (eb || summary).parentNode.insertBefore(mid, (eb || summary).nextSibling); }
-  top.innerHTML = ''; mid.innerHTML = '';
+  if (!act.parentNode) mid.parentNode.insertBefore(act, mid.nextSibling);
+  mhApplyLook();
   const [members, notices] = await Promise.all([getCollectionEntriesWithId('tablebanking', 'member-register'), getCollectionEntries('tablebanking', 'member-notice').catch(() => [])]);
   const member = members.find(x => x.memberName === memberName);
   if (!member) return;
   const d = await mpCollect(member), today = new Date().toISOString().slice(0, 10), k = v => fmtKES(Number(v) || 0);
   const goal = PORTAL_GOAL.savings + PORTAL_GOAL.shares, have = d.savings + d.shareContrib + d.cap, pct = Math.round(have / goal * 100);
-  // standing
   const running = d.loanRows.filter(r => r.bal > 0.5 && r.ch);
   let overdue = false; running.forEach(r => { if (r.dq || schedFor(r.l, r.ch.totalRepayable, r.repaid).some(x => x.status === 'Overdue')) overdue = true; });
-  const active = !member.status || member.status === 'Active';
-  const good = active && !overdue;
+  const active = !member.status || member.status === 'Active', good = active && !overdue;
   const initials = memberName.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
-  // header
-  top.innerHTML = '<div style="background:linear-gradient(135deg,#1b5e20,#43a047);border-radius:18px;padding:16px;color:#fff;display:flex;gap:14px;align-items:center;margin:4px 0 12px;">' +
-    '<div id="mhPhoto" style="width:70px;height:70px;border-radius:50%;border:3px solid #fff;background:#2e7d32;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;flex:none;">' +
+  const streak = mhStreak(d.myContrib);
+  // ---------- header ----------
+  top.innerHTML = '<div style="background:linear-gradient(135deg,#1b5e20,#43a047);border-radius:18px;padding:16px;color:#fff;display:flex;gap:14px;align-items:center;margin:4px 0 8px;">' +
+    '<div style="width:70px;height:70px;border-radius:50%;border:3px solid #fff;background:#2e7d32;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;flex:none;">' +
     (d.photo ? '<img src="' + d.photo.data + '" style="width:100%;height:100%;object-fit:cover;">' : escHtml(initials)) + '</div>' +
-    '<div style="min-width:0;"><div style="font-size:12px;opacity:.85;">Welcome</div><div style="font-size:19px;font-weight:800;line-height:1.2;">' + escHtml(memberName) + '</div>' +
-    '<div style="font-size:13px;opacity:.95;margin-top:2px;">' + escHtml(member.memberNumber || '') + (member.dateJoined ? ' · Member since ' + escHtml(member.dateJoined) : '') + '</div>' +
+    '<div style="min-width:0;"><div style="font-size:12px;opacity:.85;">' + t('Welcome') + '</div><div style="font-size:19px;font-weight:800;line-height:1.2;">' + escHtml(memberName) + '</div>' +
+    '<div style="font-size:13px;opacity:.95;margin-top:2px;">' + escHtml(member.memberNumber || '') + (member.dateJoined ? ' · ' + t('Member since') + ' ' + escHtml(member.dateJoined) : '') + '</div>' +
     '<div style="display:inline-block;margin-top:6px;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:800;background:' + (good ? '#e8f5e9' : '#fff3cd') + ';color:' + (good ? '#1b5e20' : '#8a5a00') + ';">' +
-    (good ? '● Good standing' : (active ? '● Needs attention — loan instalment overdue' : '● Status: ' + escHtml(member.status))) + '</div></div></div>';
-  // notices
+    (good ? t('● Good standing') : (active ? t('● Needs attention — loan instalment overdue') : t('● Status: ') + escHtml(member.status))) + '</div></div></div>' +
+    '<div id="mhBar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">' +
+    '<button type="button" data-a="lang" class="mhTool">' + (mhLang === 'sw' ? '🇬🇧 English' : '🇰🇪 Kiswahili') + '</button>' +
+    '<button type="button" data-a="size" class="mhTool">Aa</button>' +
+    '<button type="button" data-a="dark" class="mhTool">' + (mhPrefGet('dark', '0') === '1' ? '☀️' : '🌙') + '</button>' +
+    '<button type="button" data-a="share" class="mhTool">📤 ' + t('Share') + '</button></div>';
+  // ---------- payment confirmation ----------
+  const pays = [].concat(d.myContrib.map(c => ({ date: c.date, amt: parseFloat(c.amount) || 0, what: c.contributionType === 'Share' ? t('Share (contribution)') : t('Saving'), ic: '💰' })),
+    d.myRepay.map(r => ({ date: r.date, amt: parseFloat(r.amountRepaid) || 0, what: t('Loan repayment'), ic: '💳' })),
+    d.myFines.map(f => ({ date: f.date, amt: parseFloat(f.amount) || 0, what: t('Fine') + (f.reason ? ' — ' + f.reason : ''), ic: '⚠️' }))).filter(x => x.date).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const last = pays.find(p => p.ic !== '⚠️');
+  if (last && recDaysFrom(last.date, today) <= 30) top.innerHTML += mhCard('<div style="font-size:15px;font-weight:800;color:#1b5e20;">✔ ' + t('We received your') + ' ' + k(last.amt) + ' ' + t('on') + ' ' + escHtml(last.date) + '</div><div style="font-size:12.5px;color:#444;">' + escHtml(last.what) + '</div>', 'background:#eaf6ec;border:1px solid #2e7d32;');
+  // ---------- notices ----------
   const live = notices.filter(n => !n.showUntil || n.showUntil >= today).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   const meet = notices.filter(n => n.kind === 'Next meeting' && n.eventDate && n.eventDate >= today && (!n.showUntil || n.showUntil >= today)).sort((a, b) => a.eventDate.localeCompare(b.eventDate))[0];
   const plain = live.filter(n => n.kind !== 'Next meeting').slice(0, 5);
-  if (meet) { const dl = recDaysFrom(today, meet.eventDate); top.innerHTML += mhCard(mhTitle('📅', 'NEXT MEETING') + '<div style="font-size:17px;font-weight:800;">' + escHtml(meet.title || 'SACCO meeting') + '</div><div style="font-size:14px;margin-top:2px;"><b>' + escHtml(meet.eventDate) + '</b> · ' + (dl === 0 ? 'Today' : dl === 1 ? 'Tomorrow' : 'in ' + dl + ' days') + '</div>' + (meet.message ? '<div style="font-size:13px;color:#444;margin-top:4px;white-space:pre-wrap;">' + escHtml(meet.message) + '</div>' : ''), 'border-left:6px solid #1565c0;'); }
-  if (plain.length) top.innerHTML += mhCard(mhTitle('📢', 'NOTICES FROM THE SACCO') + plain.map(n => '<div style="padding:8px 0;border-top:1px solid #eee;"><div style="font-weight:800;font-size:14px;">' + escHtml(n.title || 'Notice') + ' <span style="font-weight:400;font-size:11px;color:#777;">' + escHtml(n.date || '') + '</span></div>' + (n.message ? '<div style="font-size:13px;color:#333;white-space:pre-wrap;margin-top:2px;">' + escHtml(n.message) + '</div>' : '') + '</div>').join(''), 'border-left:6px solid #f9a825;background:#fffdf3;');
-  // savings goal + strip
+  if (meet) { const dl = recDaysFrom(today, meet.eventDate); top.innerHTML += mhCard(mhTitle('📅', t('NEXT MEETING')) + '<div style="font-size:17px;font-weight:800;">' + escHtml(meet.title || 'SACCO meeting') + '</div><div style="font-size:14px;margin-top:2px;"><b>' + escHtml(meet.eventDate) + '</b> · ' + (dl === 0 ? t('Today') : dl === 1 ? t('Tomorrow') : t('in') + ' ' + dl + ' ' + t('days')) + '</div>' + (meet.message ? '<div style="font-size:13px;color:#444;margin-top:4px;white-space:pre-wrap;">' + escHtml(meet.message) + '</div>' : ''), 'border-left:6px solid #1565c0;'); }
+  if (plain.length) top.innerHTML += mhCard(mhTitle('📢', t('NOTICES FROM THE SACCO')) + plain.map(n => '<div style="padding:8px 0;border-top:1px solid #eee;"><div style="font-weight:800;font-size:14px;">' + escHtml(n.title || 'Notice') + ' <span style="font-weight:400;font-size:11px;color:#777;">' + escHtml(n.date || '') + '</span></div>' + (n.message ? '<div style="font-size:13px;color:#333;white-space:pre-wrap;margin-top:2px;">' + escHtml(n.message) + '</div>' : '') + '</div>').join(''), 'border-left:6px solid #f9a825;background:#fffdf3;');
+  // ---------- savings goal + strip + plan ----------
   const months = mhMonths(d.myContrib), mx = Math.max(1, ...months.map(m => m.amt)), kept = months.filter(m => m.amt >= PORTAL_GOAL.monthMin).length;
-  let h = mhCard(mhTitle('🎯', 'MY SAVINGS GOAL') +
-    '<div style="font-size:22px;font-weight:800;">' + k(have) + ' <span style="font-size:13px;font-weight:600;color:#555;">of ' + k(goal) + '</span></div>' + mhBar(pct, pct >= 100 ? '#2e7d32' : '#43a047') +
-    '<div style="font-size:12.5px;color:#444;margin-top:5px;">' + (pct >= 100 ? '🎉 <b>Goal reached — well done!</b>' : '<b>' + pct + '%</b> done · ' + k(goal - have) + ' to go') + ' (savings ' + k(PORTAL_GOAL.savings) + ' + share capital ' + k(PORTAL_GOAL.shares) + ')</div>' +
-    '<div style="font-size:12px;font-weight:800;margin:12px 0 5px;color:#1b5e20;">LAST 12 MONTHS — saved in ' + kept + ' of 12</div>' +
+  const firstSave = d.myContrib.filter(c => c.contributionType !== 'Share' && c.date).map(c => c.date).sort()[0];
+  const since = firstSave ? Math.max(1, Math.min(6, mcMonthsBetween(firstSave, today) + 1)) : 0, cutoff = schedAddMonths(today, -6);
+  const recentSave = d.myContrib.filter(c => c.contributionType !== 'Share' && c.date >= cutoff).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0), avg = since ? Math.round(recentSave / since) : 0, left = goal - have;
+  const nowD = new Date(), monthsLeftYear = 12 - nowD.getMonth();
+  let plan = '';
+  if (left <= 0) plan = '🎉 ' + t('Goal reached — well done!');
+  else {
+    const eta = avg > 0 ? new Date(nowD.getFullYear(), nowD.getMonth() + Math.ceil(left / avg), 1) : null;
+    plan = (eta ? (mhLang === 'sw' ? 'Ukiendelea kuweka ' + k(avg) + ' kwa mwezi, utafikia lengo ' + eta.toLocaleString('sw', { month: 'long', year: 'numeric' }) + '.' : 'Saving about <b>' + k(avg) + '</b> a month, you reach your goal in <b>' + eta.toLocaleString('en', { month: 'long', year: 'numeric' }) + '</b>.') : (mhLang === 'sw' ? 'Anza kuweka akiba kila mwezi ili ufikie lengo.' : 'Start saving every month to reach your goal.')) +
+      '<br>' + (mhLang === 'sw' ? 'Kumaliza kufikia Desemba, weka <b>' + k(Math.ceil(left / monthsLeftYear)) + '</b> kwa mwezi.' : 'To finish by December, save <b>' + k(Math.ceil(left / monthsLeftYear)) + '</b> a month.');
+  }
+  let h = mhCard(mhTitle('🎯', t('MY SAVINGS GOAL')) +
+    '<div style="font-size:22px;font-weight:800;">' + k(have) + ' <span style="font-size:13px;font-weight:600;color:#555;">' + t('of') + ' ' + k(goal) + '</span></div>' + mhBar(pct, pct >= 100 ? '#2e7d32' : '#43a047') +
+    '<div style="font-size:12.5px;color:#444;margin-top:5px;">' + (pct >= 100 ? '🎉 <b>' + t('Goal reached — well done!') + '</b>' : '<b>' + pct + '%</b> ' + t('done') + ' · ' + k(left) + ' ' + t('to go')) + ' (' + t('savings') + ' ' + k(PORTAL_GOAL.savings) + ' + ' + t('share capital') + ' ' + k(PORTAL_GOAL.shares) + ')</div>' +
+    '<div style="font-size:12px;font-weight:800;margin:12px 0 5px;color:#1b5e20;">' + t('LAST 12 MONTHS — saved in') + ' ' + kept + ' ' + t('of') + ' 12</div>' +
     '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;">' + months.map(m => { const ok = m.amt >= PORTAL_GOAL.monthMin, hgt = m.amt > 0 ? Math.max(8, Math.round(m.amt / mx * 34)) : 3; return '<div title="' + escHtml(m.key) + ': ' + k(m.amt) + '" style="text-align:center;border-radius:8px;padding:5px 2px;background:' + (ok ? '#e8f5e9' : '#f1f1f1') + ';"><div style="height:36px;display:flex;align-items:flex-end;justify-content:center;"><div style="width:60%;height:' + hgt + 'px;background:' + (ok ? '#43a047' : '#bdbdbd') + ';border-radius:3px 3px 0 0;"></div></div><div style="font-size:11px;font-weight:700;">' + m.lbl + '</div><div style="font-size:10.5px;color:#555;">' + (m.amt > 0 ? mhShort(m.amt) : '–') + '</div></div>'; }).join('') + '</div>' +
-    '<div style="font-size:11px;color:#777;margin-top:5px;">Green = saved ' + k(PORTAL_GOAL.monthMin) + ' or more that month.</div>');
-  // loan card
+    '<div style="font-size:11px;color:#777;margin-top:5px;">' + t('Green = saved') + ' ' + k(PORTAL_GOAL.monthMin) + ' ' + t('or more that month.') + '</div>' +
+    '<div style="margin-top:10px;padding:10px;border-radius:12px;background:#eef4fb;font-size:13px;color:#222;"><div style="font-size:11px;font-weight:800;color:#1565c0;margin-bottom:2px;">📈 ' + t('MY SAVING PLAN') + '</div>' + plan + '</div>');
+  // ---------- badges ----------
+  const hasPaidLoan = d.loanRows.some(r => r.repaid > 0 && r.bal <= 0.5 && r.l.status !== 'Written Off');
+  const badges = [
+    [streak >= 2, '🔥', mhLang === 'sw' ? 'Miezi ' + streak + ' mfululizo' : streak + '-month saving streak', mhLang === 'sw' ? 'Weka akiba miezi 2 mfululizo' : 'Save 2 months in a row'],
+    [!!firstSave && mcMonthsBetween(firstSave, today) >= 6, '🌱', mhLang === 'sw' ? 'Miezi 6+ ya akiba' : '6+ months of saving', mhLang === 'sw' ? 'Unaweza kukopa' : 'Qualifies you to borrow'],
+    [d.cap + d.shareContrib >= PORTAL_GOAL.shares, '🏅', mhLang === 'sw' ? 'Hisa zimekamilika' : 'Share capital complete', mhLang === 'sw' ? 'Kamilisha ' + k(PORTAL_GOAL.shares) : 'Complete ' + k(PORTAL_GOAL.shares)],
+    [pct >= 100, '🎯', mhLang === 'sw' ? 'Lengo limefikiwa' : 'Savings goal reached', mhLang === 'sw' ? 'Fikia ' + k(goal) : 'Reach ' + k(goal)],
+    [hasPaidLoan, '🏆', mhLang === 'sw' ? 'Mkopo umelipwa kikamilifu' : 'Loan repaid in full', mhLang === 'sw' ? 'Maliza kulipa mkopo' : 'Finish repaying a loan']];
+  h += mhCard(mhTitle('🏅', t('MY BADGES')) + '<div style="display:flex;flex-wrap:wrap;gap:8px;">' + badges.map(b => '<div style="flex:1 1 140px;border-radius:12px;padding:8px 10px;' + (b[0] ? 'background:#fff8e1;border:1px solid #f9a825;' : 'background:#f1f1f1;border:1px dashed #bbb;opacity:.75;') + '"><div style="font-size:20px;">' + (b[0] ? b[1] : '🔒') + '</div><div style="font-size:12.5px;font-weight:800;">' + escHtml(b[2]) + '</div><div style="font-size:11px;color:#666;">' + (b[0] ? '✔' : escHtml(b[3])) + '</div></div>').join('') + '</div>');
+  // ---------- loan card ----------
   if (running.length) {
     h += running.map(r => {
       const rows = schedFor(r.l, r.ch.totalRepayable, r.repaid), next = rows.find(x => x.status !== 'Paid'), total = r.ch.totalRepayable, ppct = total > 0 ? Math.round(r.repaid / total * 100) : 0;
       const late = next && next.status === 'Overdue', dl = next ? recDaysFrom(today, next.due) : null, arrears = rows.filter(x => x.status === 'Overdue').reduce((a, x) => a + x.unpaid, 0);
-      return mhCard(mhTitle('💳', 'MY LOAN — ' + escHtml(String(r.l.loanProduct || '').toUpperCase())) +
-        '<div style="font-size:12px;color:#555;">You owe</div><div style="font-size:24px;font-weight:800;' + (late ? 'color:#c62828;' : '') + '">' + k(r.bal) + '</div>' + mhBar(ppct, late ? '#c62828' : '#1565c0') +
-        '<div style="font-size:12.5px;color:#444;margin:5px 0 8px;">Repaid ' + k(r.repaid) + ' of ' + k(total) + ' (' + ppct + '%) · taken ' + escHtml(r.l.date || '') + '</div>' +
-        (next ? '<div style="border-radius:12px;padding:10px;background:' + (late ? '#fdecea' : '#eef4fb') + ';"><div style="font-size:11px;font-weight:800;color:' + (late ? '#c62828' : '#1565c0') + ';">' + (late ? 'OVERDUE INSTALMENT' : 'NEXT INSTALMENT') + '</div><div style="font-size:18px;font-weight:800;">' + k(next.unpaid) + ' <span style="font-size:13px;font-weight:600;">by ' + escHtml(next.due) + '</span></div><div style="font-size:12.5px;font-weight:700;color:' + (late ? '#c62828' : '#333') + ';">' + (late ? 'Overdue by ' + next.late + ' days' + (arrears > next.unpaid + 0.5 ? ' · total overdue ' + k(arrears) : '') : (dl === 0 ? 'Due today' : dl + ' days left')) + '</div></div>' : '<div style="font-size:13px;">Instalment dates are not available for this loan. Final due date: ' + escHtml(r.l.dueDate || '') + '</div>'));
+      return mhCard(mhTitle('💳', t('MY LOAN') + ' — ' + escHtml(String(r.l.loanProduct || '').toUpperCase())) +
+        '<div style="font-size:12px;color:#555;">' + t('You owe') + '</div><div style="font-size:24px;font-weight:800;' + (late ? 'color:#c62828;' : '') + '">' + k(r.bal) + '</div>' + mhBar(ppct, late ? '#c62828' : '#1565c0') +
+        '<div style="font-size:12.5px;color:#444;margin:5px 0 8px;">' + t('Repaid') + ' ' + k(r.repaid) + ' ' + t('of') + ' ' + k(total) + ' (' + ppct + '%) · ' + t('taken') + ' ' + escHtml(r.l.date || '') + '</div>' +
+        (next ? '<div style="border-radius:12px;padding:10px;background:' + (late ? '#fdecea' : '#eef4fb') + ';"><div style="font-size:11px;font-weight:800;color:' + (late ? '#c62828' : '#1565c0') + ';">' + (late ? t('OVERDUE INSTALMENT') : t('NEXT INSTALMENT')) + '</div><div style="font-size:18px;font-weight:800;">' + k(next.unpaid) + ' <span style="font-size:13px;font-weight:600;">' + t('by') + ' ' + escHtml(next.due) + '</span></div><div style="font-size:12.5px;font-weight:700;color:' + (late ? '#c62828' : '#333') + ';">' + (late ? t('Overdue by') + ' ' + next.late + ' ' + t('days') + (arrears > next.unpaid + 0.5 ? ' · total ' + k(arrears) : '') : (dl === 0 ? t('Due today') : dl + ' ' + t('days left'))) + '</div></div>' : '<div style="font-size:13px;">Final due date: ' + escHtml(r.l.dueDate || '') + '</div>'));
     }).join('');
-  } else {
-    h += mhCard(mhTitle('💳', 'MY LOAN') + '<div style="font-size:15px;font-weight:700;">You have no running loan. ✔</div><div style="font-size:12.5px;color:#555;margin-top:3px;">See the box above to find out if you can borrow, and use the calculator below to plan.</div>');
-  }
-  // pay card
-  const P = PORTAL_PAY, row = (l, v, cp) => '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #eee;"><div style="flex:1;"><div style="font-size:11px;color:#666;">' + l + '</div><div style="font-size:19px;font-weight:800;letter-spacing:.5px;">' + escHtml(v) + '</div></div>' + (cp ? '<button type="button" class="mhCopy btn-small" data-v="' + escHtml(v) + '" style="padding:8px 14px;border-radius:10px;border:none;background:#1b5e20;color:#fff;font-weight:700;">Copy</button>' : '') + '</div>';
-  h += mhCard(mhTitle('📲', 'HOW TO PAY (SAVINGS, SHARES, LOAN)') + '<div style="font-size:13px;color:#333;margin-bottom:4px;">M-Pesa → <b>Lipa na M-Pesa</b> → <b>Pay Bill</b></div>' + row('Business number (Paybill)', P.paybill, true) + row('Account number', P.account, true) +
+  } else h += mhCard(mhTitle('💳', t('MY LOAN')) + '<div style="font-size:15px;font-weight:700;">' + t('You have no running loan.') + ' ✔</div>');
+  // ---------- pay card ----------
+  const P = PORTAL_PAY, prow = (l, v) => '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid #eee;"><div style="flex:1;"><div style="font-size:11px;color:#666;">' + l + '</div><div style="font-size:19px;font-weight:800;letter-spacing:.5px;">' + escHtml(v) + '</div></div><button type="button" class="mhCopy" data-v="' + escHtml(v) + '" style="padding:8px 14px;border-radius:10px;border:none;background:#1b5e20;color:#fff;font-weight:700;">' + t('Copy') + '</button></div>';
+  h += mhCard(mhTitle('📲', t('HOW TO PAY (SAVINGS, SHARES, LOAN)')) + '<div style="font-size:13px;color:#333;margin-bottom:4px;">M-Pesa → <b>Lipa na M-Pesa</b> → <b>Pay Bill</b></div>' + prow(t('Business number (Paybill)'), P.paybill) + prow(t('Account number'), P.account) +
     '<div style="font-size:12.5px;color:#444;border-top:1px solid #eee;padding-top:7px;">' + escHtml(P.bank) + ' · <b>' + escHtml(P.name) + '</b></div>' +
-    '<div style="font-size:12px;color:#8a5a00;background:#fff8e1;border-radius:8px;padding:7px;margin-top:8px;">After paying, your payment is matched to you by your name or phone. If you pay from another person\'s phone, tell an official your name and the M-Pesa code (your member number is <b>' + escHtml(member.memberNumber || '') + '</b>).</div>');
-  // calculator
+    '<div style="font-size:12px;color:#8a5a00;background:#fff8e1;border-radius:8px;padding:7px;margin-top:8px;">' + (mhLang === 'sw' ? 'Baada ya kulipa, malipo yako hulinganishwa na jina au simu yako. Ukilipa kwa simu ya mtu mwingine, mwambie afisa jina lako na nambari ya M-Pesa (namba yako ya mwanachama ni <b>' + escHtml(member.memberNumber || '') + '</b>).' : 'After paying, your payment is matched to you by your name or phone. If you pay from another person\'s phone, tell an official your name and the M-Pesa code (your member number is <b>' + escHtml(member.memberNumber || '') + '</b>).') + '</div>');
+  // ---------- calculator ----------
   const prods = Object.keys(LOAN_PRODUCTS).filter(x => LOAN_PRODUCTS[x].rate);
-  h += mhCard(mhTitle('🧮', 'LOAN CALCULATOR') + '<div style="display:grid;gap:8px;"><select id="mhProd" style="padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px;">' + prods.map(x => '<option>' + escHtml(x) + '</option>').join('') + '</select>' +
-    '<input id="mhAmt" type="number" inputmode="numeric" placeholder="Amount you want (KES)" style="padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px;">' +
-    '<input id="mhTerm" type="number" inputmode="numeric" placeholder="Months to repay" style="padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px;"></div><div id="mhCalcOut" style="margin-top:10px;font-size:13.5px;"></div>');
-  // my details
-  const dl = (a, b) => b ? '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #eee;font-size:13px;"><span style="color:#666;">' + a + '</span><b style="text-align:right;">' + escHtml(b) + '</b></div>' : '';
-  h += mhCard(mhTitle('👤', 'MY DETAILS') + dl('Member number', member.memberNumber) + dl('Sex', member.sex) + dl('Phone', member.contact) + dl('ID number', member.idNo) + dl('Group (CIG)', member.cigName) + dl('Next of kin', [member.nokName, member.nokRelationship].filter(Boolean).join(' — ')) + dl('Next of kin phone', member.nokPhone) +
-    '<button type="button" id="mhCorrect" style="margin-top:10px;width:100%;padding:11px;border-radius:12px;border:2px solid #1b5e20;background:#fff;color:#1b5e20;font-weight:800;font-size:14px;">✎ Ask the SACCO to correct my details</button>');
+  h += mhCard(mhTitle('🧮', t('LOAN CALCULATOR')) + '<div style="display:grid;gap:8px;"><select id="mhProd" style="padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px;">' + prods.map(x => '<option>' + escHtml(x) + '</option>').join('') + '</select>' +
+    '<input id="mhAmt" type="number" inputmode="numeric" placeholder="' + t('Amount you want (KES)') + '" style="padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px;">' +
+    '<input id="mhTerm" type="number" inputmode="numeric" placeholder="' + t('Months to repay') + '" style="padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px;"></div><div id="mhCalcOut" style="margin-top:10px;font-size:13.5px;"></div>');
+  // ---------- details ----------
+  const dl2 = (a, b) => b ? '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #eee;font-size:13px;"><span style="color:#666;">' + a + '</span><b style="text-align:right;">' + escHtml(b) + '</b></div>' : '';
+  h += mhCard(mhTitle('👤', t('MY DETAILS')) + dl2(t('Member number'), member.memberNumber) + dl2('Sex', member.sex) + dl2(t('Phone'), member.contact) + dl2('ID', member.idNo) + dl2('CIG', member.cigName) + dl2(t('Next of kin'), [member.nokName, member.nokRelationship].filter(Boolean).join(' — ')) + dl2(t('Next of kin') + ' ' + t('Phone'), member.nokPhone) +
+    '<button type="button" id="mhCorrect" style="margin-top:10px;width:100%;padding:11px;border-radius:12px;border:2px solid #1b5e20;background:#fff;color:#1b5e20;font-weight:800;font-size:14px;">✎ ' + t('Ask the SACCO to correct my details') + '</button>');
   mid.innerHTML = h;
-  mid.querySelectorAll('.mhCopy').forEach(b => { b.onclick = () => mhCopy(b.dataset.v, b); });
+  // ---------- recent activity ----------
+  const lastTen = pays.slice(0, 8);
+  act.innerHTML = mhCard(mhTitle('🕒', t('RECENT ACTIVITY')) + (lastTen.length ? lastTen.map(p => '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #eee;"><div style="font-size:20px;">' + p.ic + '</div><div style="flex:1;min-width:0;"><div style="font-size:13.5px;font-weight:700;">' + escHtml(p.what) + '</div><div style="font-size:11.5px;color:#777;">' + escHtml(p.date) + '</div></div><div style="font-weight:800;font-size:14px;">' + k(p.amt) + '</div></div>').join('') : '<div style="font-size:13px;color:#777;">' + t('No activity yet.') + '</div>') +
+    '<button type="button" id="mhFull" style="margin-top:10px;width:100%;padding:10px;border-radius:12px;border:1px solid #1b5e20;background:#fff;color:#1b5e20;font-weight:800;">' + t('Show full history') + '</button>');
+  const panels = Array.from(container.querySelectorAll(':scope > .panel')).slice(1);
+  panels.forEach(pn => { pn.style.display = 'none'; });
+  act.querySelector('#mhFull').onclick = e => { const show = panels[0] && panels[0].style.display === 'none'; panels.forEach(pn => { pn.style.display = show ? '' : 'none'; }); e.target.textContent = show ? t('Hide full history') : t('Show full history'); };
+  // ---------- wiring ----------
+  top.querySelectorAll('.mhTool').forEach(b => { b.onclick = async () => {
+    const a = b.dataset.a;
+    if (a === 'lang') { mhLang = mhLang === 'sw' ? 'en' : 'sw'; try { localStorage.setItem('ekfs_portal_lang', mhLang); } catch (e) {} memberHomeRender(memberName); }
+    else if (a === 'size') { mhPrefSet('size', String((parseInt(mhPrefGet('size', '0'), 10) + 1) % 3)); mhApplyLook(); }
+    else if (a === 'dark') { mhPrefSet('dark', mhPrefGet('dark', '0') === '1' ? '0' : '1'); mhApplyLook(); b.textContent = mhPrefGet('dark', '0') === '1' ? '☀️' : '🌙'; }
+    else if (a === 'share') {
+      const lines = ['*East Kamagak Farmers SACCO — statement*', memberName + ' (' + (member.memberNumber || '') + ')', 'Date: ' + today, '', 'Savings: ' + k(d.savings + d.shareContrib), 'Share capital: ' + k(d.cap), 'Goal: ' + k(have) + ' of ' + k(goal) + ' (' + pct + '%)', 'Loan owed: ' + k(d.outstanding), '', 'Recent payments:'].concat(lastTen.slice(0, 5).map(p => '• ' + p.date + ' ' + p.what + ' ' + k(p.amt)));
+      const txt = lines.join('\n');
+      if (navigator.share) { try { await navigator.share({ text: txt }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+      window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
+    }
+  }; });
+  mid.querySelectorAll('.mhCopy').forEach(b => { b.onclick = () => { mhCopy(b.dataset.v, b); }; });
   const ps = mid.querySelector('#mhProd'), am = mid.querySelector('#mhAmt'), tm = mid.querySelector('#mhTerm'), out = mid.querySelector('#mhCalcOut');
   const calc = () => {
-    const pr = LOAN_PRODUCTS[ps.value], a = parseFloat(am.value), t = parseInt(tm.value, 10) || pr.term;
-    if (!tm.value) tm.placeholder = 'Months to repay (usual: ' + pr.term + ')';
-    if (!a || a <= 0) { out.innerHTML = '<span style="color:#777;">Type the amount to see what you would pay each month.</span>'; return; }
-    const f = computeFlatLoanTotals(a, pr.rate, t), warn = [];
-    if (pr.max && a > pr.max) warn.push('This product allows at most ' + k(pr.max) + '.');
-    if (t > pr.term) warn.push('Usual term for this loan is ' + pr.term + ' months.');
-    out.innerHTML = '<div style="background:#eef4fb;border-radius:12px;padding:10px;"><div style="font-size:12px;color:#555;">You would pay about</div><div style="font-size:22px;font-weight:800;color:#1565c0;">' + k(f.totalRepayable / t) + ' <span style="font-size:13px;">a month for ' + t + ' months</span></div><div style="font-size:12.5px;margin-top:4px;">Interest ' + k(f.totalInterest) + ' (' + pr.rate + '% a month, flat) · Total ' + k(f.totalRepayable) + ' · Insurance 1% = ' + k(f.insuranceFee) + '</div></div>' +
-      warn.map(w => '<div style="color:#c62828;font-size:12.5px;margin-top:4px;">⚠ ' + w + '</div>').join('') + '<div style="font-size:11px;color:#777;margin-top:4px;">A guide only. Approval, processing fee and your limit still apply.</div>';
+    const pr = LOAN_PRODUCTS[ps.value], a = parseFloat(am.value), tt = parseInt(tm.value, 10) || pr.term;
+    if (!tm.value) tm.placeholder = t('Months to repay') + ' (' + pr.term + ')';
+    if (!a || a <= 0) { out.innerHTML = '<span style="color:#777;">' + (mhLang === 'sw' ? 'Andika kiasi uone utalipa kiasi gani kila mwezi.' : 'Type the amount to see what you would pay each month.') + '</span>'; return; }
+    const f = computeFlatLoanTotals(a, pr.rate, tt), warn = [];
+    if (pr.max && a > pr.max) warn.push((mhLang === 'sw' ? 'Mkopo huu una kikomo cha ' : 'This product allows at most ') + k(pr.max) + '.');
+    if (tt > pr.term) warn.push((mhLang === 'sw' ? 'Muda wa kawaida ni miezi ' : 'Usual term for this loan is ') + pr.term + (mhLang === 'sw' ? '.' : ' months.'));
+    out.innerHTML = '<div style="background:#eef4fb;border-radius:12px;padding:10px;"><div style="font-size:12px;color:#555;">' + t('You would pay about') + '</div><div style="font-size:22px;font-weight:800;color:#1565c0;">' + k(f.totalRepayable / tt) + ' <span style="font-size:13px;">' + t('a month for') + ' ' + tt + '</span></div><div style="font-size:12.5px;margin-top:4px;">' + (mhLang === 'sw' ? 'Riba ' : 'Interest ') + k(f.totalInterest) + ' (' + pr.rate + '% / ' + (mhLang === 'sw' ? 'mwezi' : 'month') + ') · Total ' + k(f.totalRepayable) + ' · ' + (mhLang === 'sw' ? 'Bima' : 'Insurance') + ' 1% = ' + k(f.insuranceFee) + '</div></div>' +
+      warn.map(w => '<div style="color:#c62828;font-size:12.5px;margin-top:4px;">⚠ ' + w + '</div>').join('');
   };
   [ps, am, tm].forEach(x => x.addEventListener('input', calc)); calc();
   mid.querySelector('#mhCorrect').onclick = async () => {
-    const txt = prompt('What should be corrected? (e.g. "My phone number is now 07...")');
+    const txt = prompt(mhLang === 'sw' ? 'Nini kirekebishwe?' : 'What should be corrected? (e.g. "My phone number is now 07...")');
     if (!txt || !txt.trim()) return;
-    try { await db.collection(storageKey('tablebanking', 'correction-request')).add({ date: today, memberName, request: txt.trim(), status: 'New', response: '' }); alert('Sent. An official will look at it and update your details.'); }
+    try { await db.collection(storageKey('tablebanking', 'correction-request')).add({ date: today, memberName, request: txt.trim(), status: 'New', response: '' }); alert(mhLang === 'sw' ? 'Imetumwa. Afisa ataangalia.' : 'Sent. An official will look at it and update your details.'); }
     catch (e) { alert('Could not send right now (' + ((e && (e.code || e.message)) || 'error') + '). Please tell an official.'); }
   };
 }
+
 async function initMemberView(memberName) {
   updateSyncBadge();
   document.querySelector('.layout').style.display = 'none';
