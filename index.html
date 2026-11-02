@@ -902,6 +902,13 @@
   #appShell footer.appfoot{color:#a9c4b2;}
   #appShell footer.appfoot b{color:#5fd08f;}
   /* ---------- Dashboard (officials only) ---------- */
+  .rt-off{display:none!important;}
+  #recTabs{display:none;position:sticky;top:0;z-index:30;gap:6px;overflow-x:auto;padding:8px 2px 10px;margin:0 0 10px;background:var(--cream);}
+  #recTabs button{flex:0 0 auto;border:0;border-radius:22px;padding:10px 14px;font-size:14px;font-weight:800;white-space:nowrap;cursor:pointer;}
+  body.rt-mode #groupSavingsSection>h2{display:none;}
+  body.rt-mode #groupSavingsGrid{display:grid!important;}
+  body.rt-mode #shareOutToggle{display:none;}
+  body.rt-mode #shareOutContent,body.rt-mode #entriesContent{display:block!important;}
   #viewNav{display:none;gap:6px;margin:10px 14px;background:#0a1d13;border:1px solid #2b4a37;border-radius:30px;padding:5px;overflow:auto;}
   #viewNav button{flex:1;border:0;background:none;color:#cfe3d6;padding:10px 14px;border-radius:24px;font-size:14px;white-space:nowrap;cursor:pointer;font-weight:600;}
   #viewNav button.on{background:#1f4a31;color:#fff;box-shadow:inset 0 0 0 1px #8a7a2a;}
@@ -1044,7 +1051,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 2 Nov 2026 · build Z</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 2 Nov 2026 · build AA</span></p>
   </div>
 </div>
 
@@ -1111,6 +1118,7 @@
   </div>
 
   <div>
+    <div id="recTabs"></div>
     <div class="stats" id="statsRow"></div>
     <div class="finance-panel" id="financePanel"></div>
 
@@ -2048,6 +2056,7 @@ function updateSectionVisibility() {
 
   const soSection = document.getElementById('shareOutSection');
   if (soSection) soSection.style.display = isTableBanking ? 'block' : 'none';
+  try { recTabsApply(); } catch (e) {}
 }
 
 function populateCategorySelect() {
@@ -2727,6 +2736,7 @@ function subscribeToCurrentRecord() {
 }
 
 function startEdit(row) {
+  try { if (recTabsOn()) recTabShow('entries'); } catch (e) {}
   editingRowId = row.__id;
   editingRowData = row;
   const def = getCurrentRecordDef();
@@ -2831,6 +2841,7 @@ categorySelect.addEventListener('change', async () => {
 
 recordSelect.addEventListener('change', async () => {
   currentRecord = recordSelect.value;
+  if (recTabsOn()) recTabShow('entries');
   await buildForm();
   resetForm();
   subscribeToCurrentRecord();
@@ -5200,6 +5211,37 @@ function gsMakeCollapsible(grid) {
     apply();
   });
 }
+// ===================== RECORDS TABS (admin / chairperson / official) =====================
+const REC_TABS = [['overview', '📊', 'Overview', '#1b5e20', '#e8f5e9'], ['risk', '⚠️', 'Risk', '#b71c1c', '#fdecea'], ['lend', '💰', 'Lending', '#0d47a1', '#e3f2fd'], ['grant', '🎁', 'Grants', '#6a1b9a', '#f3e5f5'], ['members', '👥', 'Per member', '#e65100', '#fff3e0'], ['entries', '📝', 'Entries', '#37474f', '#eceff1']];
+var recTab = 'overview';
+function recTabsOn() {
+  return currentCategory === 'tablebanking' && !document.body.classList.contains('bookkeeper-mode') && !document.body.classList.contains('mobilizer-mode') && !!getSession();
+}
+function recGroupOf(txt) {
+  if (/Portfolio at Risk|Early Warning/i.test(txt)) return 'risk';
+  if (/Safe Lending/i.test(txt)) return 'lend';
+  if (/Inclusion Grant|Mobilization/i.test(txt)) return 'grant';
+  return 'overview';
+}
+function recTabsApply() {
+  const bar = document.getElementById('recTabs'); if (!bar) return;
+  const on = recTabsOn();
+  bar.style.display = on ? 'flex' : 'none';
+  document.body.classList.toggle('rt-mode', on);
+  const gs = document.getElementById('groupSavingsSection'), so = document.getElementById('shareOutSection'), en = document.getElementById('recordEntryPanel'), grid = document.getElementById('groupSavingsGrid');
+  if (!on) { [gs, so, en].forEach(x => x && x.classList.remove('rt-off')); if (grid) Array.from(grid.children).forEach(c => c.classList.remove('rt-off')); return; }
+  if (!bar.dataset.built) {
+    bar.dataset.built = '1';
+    REC_TABS.forEach(x => { const b = document.createElement('button'); b.type = 'button'; b.dataset.tab = x[0]; b.textContent = x[1] + ' ' + x[2]; b.onclick = () => { recTabShow(x[0]); try { window.scrollTo({ top: Math.max(0, bar.getBoundingClientRect().top + window.pageYOffset - 4), behavior: 'auto' }); } catch (e) {} }; bar.appendChild(b); });
+  }
+  bar.querySelectorAll('button').forEach(b => { const on2 = b.dataset.tab === recTab, c = REC_TABS.find(x => x[0] === b.dataset.tab); b.style.background = on2 ? c[3] : c[4]; b.style.color = on2 ? '#fff' : c[3]; });
+  let cur = 'overview';
+  if (grid) Array.from(grid.children).forEach(c => { if (c.classList.contains('gs-section-label')) cur = recGroupOf(c.textContent); c.classList.toggle('rt-off', cur !== recTab); });
+  if (gs) gs.classList.toggle('rt-off', !['overview', 'risk', 'lend', 'grant'].includes(recTab));
+  if (so) so.classList.toggle('rt-off', recTab !== 'members');
+  if (en) en.classList.toggle('rt-off', recTab !== 'entries');
+}
+function recTabShow(tab) { recTab = tab; recTabsApply(); }
 function wireGroupOverviewToggle() {
   const sec = document.getElementById('groupSavingsSection');
   if (!sec || sec.dataset.toggle) return;
@@ -5822,7 +5864,7 @@ async function updateGroupSavings() {
     if (myRun !== groupSavingsRunId) return;
     try { renderMobilizationProgress(groupSavingsGrid, await getDirectoryStatuses()); } catch (e) { console.warn('Progress failed', e); }
     if (myRun !== groupSavingsRunId) return;
-    gsMakeCollapsible(groupSavingsGrid);
+    if (recTabsOn()) recTabsApply(); else gsMakeCollapsible(groupSavingsGrid);
   } else if (currentCategory === 'merrygoround') {
     const [mgrContrib, mgrPayout] = await Promise.all([
       getCollectionEntries('merrygoround', 'contribution-record'),
