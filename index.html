@@ -338,6 +338,19 @@
     align-items: center;
     gap: 8px;
   }
+  .dashboard-join-btn { background: transparent; color: #fff; border: 2px solid #fff; border-radius: 10px; padding: 12px 20px; font-size: 15px; font-weight: 700; cursor: pointer; margin-left: 8px; }
+  .lp-tag { display: inline-block; background: rgba(255,255,255,.18); color: #fff; border-radius: 14px; padding: 4px 12px; font-size: 12.5px; font-weight: 700; letter-spacing: .3px; margin-bottom: 10px; }
+  #landingExtras { max-width: 480px; margin: -20px auto 0; padding: 0 0 30px; }
+  .lp-card { background: #fff; border-radius: 18px; box-shadow: 0 6px 22px rgba(0,0,0,0.10); padding: 18px 20px; margin: 0 0 14px; color: #1d2b21; }
+  .lp-card h3 { margin: 0 0 10px; font-size: 13px; font-weight: 800; letter-spacing: .6px; color: #1b5e20; }
+  .lp-why { display: flex; gap: 10px; align-items: flex-start; padding: 10px; border-radius: 12px; margin-bottom: 8px; }
+  .lp-why b { display: block; font-size: 14px; }
+  .lp-why span { font-size: 12.5px; color: #555; }
+  .lp-step { display: flex; gap: 12px; align-items: flex-start; padding: 8px 0; font-size: 13.5px; }
+  .lp-step i { flex: none; width: 28px; height: 28px; border-radius: 50%; background: #1b5e20; color: #fff; font-style: normal; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  .lp-btn { display: block; width: 100%; box-sizing: border-box; text-align: center; text-decoration: none; border: none; border-radius: 12px; padding: 13px; font-size: 15px; font-weight: 800; color: #fff; margin-top: 8px; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,.2); }
+  .lp-copy { border: none; border-radius: 10px; background: #00897b; color: #fff; font-weight: 800; padding: 10px 16px; font-size: 14px; }
+  .lp-foot { text-align: center; font-size: 11.5px; color: #6b7b6f; padding: 6px 16px 26px; line-height: 1.6; }
   .landing-info-card {
     background: #fff;
     border-radius: 18px;
@@ -948,9 +961,10 @@
   </header>
 
   <div class="landing-hero">
+    <div class="lp-tag">Growing Together, Saving Together</div>
     <h2>East Kamagak Farmers<br>SACCO System</h2>
     <p>One shared platform where members save, borrow, and track their loans, while the Chairperson and Officials keep every record accurate and up to date.</p>
-    <button type="button" class="dashboard-login-btn" id="openRoleModalBtn">Dashboard login <span>&#8594;</span></button>
+    <button type="button" class="dashboard-login-btn" id="openRoleModalBtn">Login <span>&#8594;</span></button><button type="button" class="dashboard-join-btn" id="lpJoinBtn">How to join</button>
   </div>
 
   <div class="landing-info-card">
@@ -974,6 +988,7 @@
     <hr>
     <div class="landing-info-footer">✔ Managed by the Chairperson &amp; Officials</div>
   </div>
+  <div id="landingExtras"></div>
 </div>
 
 <div id="roleModalOverlay" style="display:none;">
@@ -1029,7 +1044,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 2 Nov 2026 · build V</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 2 Nov 2026 · build Y</span></p>
   </div>
 </div>
 
@@ -1248,7 +1263,7 @@
   </div>
 </div>
 
-<footer class="appfoot"><b>EAST KAMAGAK FARMERS SACCO</b> &nbsp;|&nbsp; Email: eastkamagaksacco@gmail.com</footer>
+<footer class="appfoot"><b>EAST KAMAGAK FARMERS SACCO</b> &nbsp;|&nbsp; Email: eastkamagaksavingsandcredit@gmail.com</footer>
 </div>
 
 <script>
@@ -1419,12 +1434,41 @@ function showApp() {
   updateViewNav();
 }
 
+
+// ---- Landing page extras (public information only) ----
+window.addEventListener('beforeinstallprompt', function (ev) { ev.preventDefault(); window.__installEv = ev; });
+function landingExtras() {
+  const box = document.getElementById('landingExtras'); if (!box || box.dataset.done) return; box.dataset.done = '1';
+  const P = (typeof PORTAL_PAY !== 'undefined') ? PORTAL_PAY : { paybill: '400200', account: '1008085', bank: 'Cooperative Bank', name: 'East Kamagak Farmers SACCO' };
+  const tel = '254737720562', mail = 'eastkamagaksavingsandcredit@gmail.com', standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  const why = [['💰', '#eef7ee', 'Save from KES 200 a month', 'Build your savings and share capital step by step, with a yearly target of KES 26,000.'], ['🏦', '#fbf1e6', 'Borrow up to 3 times your savings', 'After 6 months of regular saving you can apply for a loan.'], ['📈', '#e8f0fb', 'Fair, flat-rate loans', 'Loans are charged a flat rate with 1% loan insurance, and you can see your schedule and balance any time.']];
+  const steps = ['Ask an official for a registration form (or print it from a member).', 'Fill it in and attach a copy of your National ID, KRA PIN, a passport photo and your next of kin\'s ID or birth certificate.', 'Pay the registration fee of <b>KES 200</b> and your share capital to the Paybill below, and keep the M-Pesa message. Ask an official for the share capital amount.', 'Give the form and proof of payment to an official. Once you are registered you get a login.'];
+  box.innerHTML =
+    '<div class="lp-card"><h3>WHY JOIN</h3>' + why.map(w => '<div class="lp-why" style="background:' + w[1] + ';"><div style="font-size:24px;">' + w[0] + '</div><div><b>' + w[2] + '</b><span>' + w[3] + '</span></div></div>').join('') + '</div>' +
+    '<div class="lp-card" id="lpJoin"><h3>HOW TO JOIN</h3>' + steps.map((x, i) => '<div class="lp-step"><i>' + (i + 1) + '</i><div>' + x + '</div></div>').join('') + '</div>' +
+    '<div class="lp-card"><h3>PAY TO THE SACCO</h3><div style="font-size:12.5px;margin-bottom:6px;">M-Pesa → Lipa na M-Pesa → Pay Bill</div>' +
+    [['Business number (Paybill)', P.paybill], ['Account number', P.account]].map(r => '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #eee;"><div style="flex:1;"><div style="font-size:11px;color:#666;">' + r[0] + '</div><div style="font-size:22px;font-weight:800;letter-spacing:.5px;">' + r[1] + '</div></div><button type="button" class="lp-copy" data-v="' + r[1] + '">Copy</button></div>').join('') +
+    '<div style="font-size:12.5px;color:#444;border-top:1px solid #eee;padding-top:7px;">' + P.bank + ' · <b>' + P.name + '</b></div></div>' +
+    '<div class="lp-card"><h3>CONTACT US</h3><div style="font-size:13.5px;line-height:1.7;">P.O. Box 194 Oyugis, Homa Bay County<br>📞 +254 737 720 562<br>✉️ ' + mail + '</div>' +
+    '<a class="lp-btn" style="background:#1565c0;" href="tel:+' + tel + '">📞 Call us</a><a class="lp-btn" style="background:#25a244;" target="_blank" rel="noopener" href="https://wa.me/' + tel + '?text=' + encodeURIComponent('Hello East Kamagak Farmers SACCO, I would like to know more about joining.') + '">💬 WhatsApp us</a><a class="lp-btn" style="background:#7b1fa2;" href="mailto:' + mail + '">✉️ Send an email</a></div>' +
+    (standalone ? '' : '<div class="lp-card"><h3>GET THE APP</h3><div style="font-size:13px;color:#444;">Add the SACCO to your phone\'s home screen so it opens like an app and works with a weak signal.</div><button type="button" class="lp-btn" id="lpInstall" style="background:#ef6c00;">📲 Install the app</button><div id="lpInstallHelp" style="display:none;font-size:12.5px;color:#333;margin-top:8px;line-height:1.6;"></div></div>') +
+    '<div class="lp-foot"><b>East Kamagak Farmers SACCO Limited</b><br>Registration No. CS/31276 · Homa Bay County, Kenya<br>Members\' records are private and shown only after login.</div>';
+  box.querySelectorAll('.lp-copy').forEach(b => { b.onclick = () => { const done = () => { const o = b.textContent; b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = o; }, 1500); }; try { if (navigator.clipboard) { navigator.clipboard.writeText(b.dataset.v).then(done, () => { mhCopyOld(b.dataset.v, done); }); return; } } catch (e) {} mhCopyOld(b.dataset.v, done); }; });
+  const ins = box.querySelector('#lpInstall');
+  if (ins) ins.onclick = async () => {
+    if (window.__installEv) { try { window.__installEv.prompt(); await window.__installEv.userChoice; } catch (e) {} window.__installEv = null; return; }
+    const h = box.querySelector('#lpInstallHelp'); h.style.display = 'block';
+    h.innerHTML = /iPhone|iPad/i.test(navigator.userAgent) ? '<b>iPhone / iPad:</b> open this page in <b>Safari</b>, tap the <b>Share</b> button, then <b>Add to Home Screen</b>.' : '<b>Android:</b> open this page in <b>Chrome</b>, tap the <b>⋮ menu</b> at the top right, then <b>Install app</b> (or <b>Add to Home screen</b>).';
+  };
+}
+document.addEventListener('click', function (ev) { const j = ev.target.closest && ev.target.closest('#lpJoinBtn'); if (j) { landingExtras(); const t2 = document.getElementById('lpJoin'); if (t2) t2.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
 function showLandingPage() {
   appShell.style.display = 'none';
   setupOverlay.style.display = 'none';
   loginOverlay.style.display = 'none';
   roleModalOverlay.style.display = 'none';
   landingPage.style.display = 'block';
+  try { landingExtras(); } catch (e) { console.warn('landing extras', e); }
 }
 
 function showLogin(role) {
@@ -4953,7 +4997,7 @@ function regFormHtml(m) {
     r2('KRA PIN', v(m.kraPin, 110), 'Phone (M-Pesa) *', v(m.contact, 110)) + r2('Village / Sub-location', v('', 110), 'Group ID (if any)', v('', 110)) +
     r1('Zone', opt(["Kachieng' North", "Kachieng' South", 'Sino Upper', 'Sino Lower'], m.zone)) + r1('CIG / VMG name', v(m.cigName, 380)) +
     r1('Main value chain', opt(['Banana', 'Dairy', 'Coffee', 'Cotton', 'Rice', 'Other'], m.valueChain)) + '</table>' +
-    sec('B.  MEMBERSHIP &amp; PAYMENT') + '<table>' + r2('Registration fee paid (KES)', v(m.registrationFee, 100), 'Share capital paid (KES)', v(m.shareCapital, 100)) + r2('Mode of payment', opt(['M-Pesa', 'Bank'], m.paymentMode), 'Reference / receipt no.', v(m.refNumber, 100)) + r2('Monthly savings I commit to (min. KES 200)', 'KES ' + v('', 90), 'Date of first saving', v('', 110)) + '</table>' +
+    sec('B.  MEMBERSHIP &amp; PAYMENT') + '<table>' + r2('Registration fee paid (KES) — fee is KES 200', v(m.registrationFee, 100), 'Share capital paid (KES)', v(m.shareCapital, 100)) + r2('Mode of payment', opt(['M-Pesa', 'Bank'], m.paymentMode), 'Reference / receipt no.', v(m.refNumber, 100)) + r2('Monthly savings I commit to (min. KES 200)', 'KES ' + v('', 90), 'Date of first saving', v('', 110)) + '</table>' +
     sec('C.  NEXT OF KIN') + '<table>' + r2('Full name *', v(m.nokName, 140), 'Relationship *', v(m.nokRelationship, 110)) + r2('Phone *', v(m.nokPhone, 110), 'ID number', v(m.nokIdNo, 110)) + '</table>' +
     sec('D.  DOCUMENTS ATTACHED (tick)') + '<table>' + docs.map(x => '<tr><td ' + tdV + '>' + BOX + '&nbsp; ' + x + '</td><td ' + tdV + ' style="width:25%;color:#666;font-size:11px;">Received by: ________</td></tr>').join('') + '</table>' +
     '<div class="pb"></div>' + sec('E.  DECLARATION') + '<ol style="font-size:12.5px;line-height:1.5;padding-left:20px;margin:4px 0;">' + decl.map(x => '<li style="margin-bottom:4px;">' + x + '</li>').join('') + '</ol>' +
