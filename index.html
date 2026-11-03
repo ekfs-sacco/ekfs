@@ -1051,7 +1051,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 2 Nov 2026 · build AB</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 2 Nov 2026 · build AC</span></p>
   </div>
 </div>
 
@@ -2337,12 +2337,15 @@ async function getMemberSavingMonths(memberName) {
   return Math.floor(months);
 }
 
+const INSURANCE_PCT = 1, PROCESS_FEE_PCT = 2; // both are deducted from the loan when it is paid out
+function loanNet(a) { a = Number(a) || 0; return a - a * (INSURANCE_PCT / 100) - a * (PROCESS_FEE_PCT / 100); }
+function loanNetNote(a) { return 'After the ' + INSURANCE_PCT + '% insurance and ' + PROCESS_FEE_PCT + '% processing fee are deducted, you receive <b>' + fmtKES(loanNet(a)) + '</b>.'; }
 function computeFlatLoanTotals(principal, ratePerMonth, termMonths) {
   const rawInterest = principal * (ratePerMonth / 100) * termMonths;
   const totalInterest = Math.min(rawInterest, principal);
   const totalRepayable = principal + totalInterest;
-  const insuranceFee = principal * 0.01;
-  return { totalInterest, totalRepayable, insuranceFee };
+  const insuranceFee = principal * (INSURANCE_PCT / 100), processingFee = principal * (PROCESS_FEE_PCT / 100);
+  return { totalInterest, totalRepayable, insuranceFee, processingFee, netPayout: principal - insuranceFee - processingFee };
 }
 
 function dqStageFromDays(daysOverdue) {
@@ -2387,7 +2390,7 @@ function wireLoanAutoFill() {
   const loanAmountInput = document.getElementById('field_loanAmount');
   const interestInput = document.getElementById('field_interestRate');
   const termInput = document.getElementById('field_termMonths');
-  const insuranceInput = document.getElementById('field_insuranceFee');
+  const insuranceInput = document.getElementById('field_insuranceFee'), processingInput = document.getElementById('field_processingFee');
   const totalInterestInput = document.getElementById('field_totalInterest');
   const totalRepayableInput = document.getElementById('field_totalRepayable');
   if (!memberSelect || !productSelect) return;
@@ -2414,6 +2417,9 @@ function wireLoanAutoFill() {
     if (principal && rate && term) {
       const totals = computeFlatLoanTotals(principal, rate, term);
       if (insuranceInput) insuranceInput.value = Math.round(totals.insuranceFee * 100) / 100;
+      if (processingInput) processingInput.value = Math.round(totals.processingFee * 100) / 100;
+      { let nn = document.getElementById('loanNetNote'); if (!nn && totalRepayableInput) { nn = document.createElement('div'); nn.id = 'loanNetNote'; nn.style.cssText = 'grid-column:1/-1;background:#eaf6ec;border:1px solid #2e7d32;border-radius:8px;padding:8px;font-size:13px;margin:4px 0;color:#111;'; totalRepayableInput.parentNode.parentNode.insertBefore(nn, totalRepayableInput.parentNode.nextSibling); }
+        if (nn) nn.innerHTML = '💵 Member receives <b>' + fmtKES(totals.netPayout) + '</b> = ' + fmtKES(principal) + ' less insurance ' + fmtKES(totals.insuranceFee) + ' and processing fee ' + fmtKES(totals.processingFee) + '.'; }
       if (totalInterestInput) totalInterestInput.value = Math.round(totals.totalInterest * 100) / 100;
       if (totalRepayableInput) totalRepayableInput.value = Math.round(totals.totalRepayable * 100) / 100;
     }
@@ -3575,7 +3581,8 @@ async function feeCheck() {
     const why = [];
     if (isNaN(ins) || ins <= 0) why.push('Insurance fee missing (should be ' + fmtKES(amt * 0.01) + ')');
     else if (Math.abs(ins - amt * 0.01) > 1) why.push('Insurance ' + fmtKES(ins) + ' is not 1% (' + fmtKES(amt * 0.01) + ')');
-    if (isNaN(pf) || pf <= 0) why.push('Processing fee not recorded');
+    if (isNaN(pf) || pf <= 0) why.push('Processing fee missing (should be ' + fmtKES(amt * PROCESS_FEE_PCT / 100) + ')');
+    else if (Math.abs(pf - amt * PROCESS_FEE_PCT / 100) > 1) why.push('Processing fee ' + fmtKES(pf) + ' is not ' + PROCESS_FEE_PCT + '% (' + fmtKES(amt * PROCESS_FEE_PCT / 100) + ')');
     if (why.length) bad.push({ l, why });
   });
   return { total: loans.length, bad, ins: toolsSum(loans, 'insuranceFee'), proc: toolsSum(loans, 'processingFee') };
@@ -3668,7 +3675,7 @@ function toolsOpen() {
     '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;"><b>📲 Reminders</b><div style="font-size:12px;color:#555;margin:3px 0;">Overdue, due soon, or not saved this month — message ready for WhatsApp or SMS.</div><button class="btn-primary btn-small" id="tRem">Open reminders</button></div>' +
     '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;"><b>🗓 Instalments due</b><div style="margin:4px 0;"><input type="month" id="tDueM" value="' + new Date().toISOString().slice(0, 7) + '"> <button class="btn-primary btn-small" id="tDue">Print list</button></div></div>' +
     '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;"><b>🧾 Member statements</b><div style="font-size:12px;color:#555;margin:3px 0;">One statement per active member. For one member, open their profile and tap Statement.</div><button class="btn-primary btn-small" id="tStm">Print all statements</button></div>' +
-    '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;"><b>✅ Loan fees check</b><div style="font-size:12px;color:#555;margin:3px 0;">Finds loans missing the 1% insurance or the processing fee.</div><button class="btn-primary btn-small" id="tFee">Run check</button></div></div>');
+    '<div style="border:1px solid #ddd;border-radius:8px;padding:8px;"><b>✅ Loan fees check</b><div style="font-size:12px;color:#555;margin:3px 0;">Finds loans missing the 1% insurance or the 2% processing fee.</div><button class="btn-primary btn-small" id="tFee">Run check</button></div></div>');
   const q = id => ov.querySelector(id), busy = (b, t, f) => async () => { const o = b.textContent; b.disabled = true; b.textContent = t; try { await f(); } catch (e) { alert('Failed: ' + e.message); } b.disabled = false; b.textContent = o; };
   q('#tBk').onclick = busy(q('#tBk'), 'Preparing…', async () => { const n = await backupDownload(false); alert('Backup saved (' + n + ' records).'); });
   q('#tBkF').onclick = busy(q('#tBkF'), 'Preparing…', async () => { const n = await backupDownload(true); alert('Backup saved (' + n + ' records).'); });
@@ -3689,6 +3696,7 @@ function setupToolsButton() {
     const b = document.createElement('button'); b.type = 'button'; b.id = 'toolsMenuBtn'; b.textContent = '🧰 Tools';
     b.style.cssText = 'flex:0 0 auto;background:#2f5d8a!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', toolsOpen); nav.appendChild(b);
   }
+  if (nav && !document.getElementById('lfNavBtn')) { const b2 = document.createElement('button'); b2.type = 'button'; b2.id = 'lfNavBtn'; b2.textContent = '📄 Loan form'; b2.style.cssText = 'flex:0 0 auto;background:#1b5e20!important;color:#fff!important;border-radius:24px;'; b2.addEventListener('click', () => lfOpen(null)); nav.appendChild(b2); }
   backupReminder(); chgWatchBadge();
 }
 document.addEventListener('DOMContentLoaded', setupToolsButton); setupToolsButton();
@@ -4246,10 +4254,12 @@ async function recSummary() {
 // ===================== SAFE LENDING CAPACITY =====================
 async function computeLendingCapacity() {
   const ew = await computeEarlyWarning();
-  const [members, contrib, loans] = await Promise.all([getCollectionEntries('tablebanking', 'member-register'), getCollectionEntries('tablebanking', 'contribution-record'), getCollectionEntriesWithId('tablebanking', 'loan-issued')]);
+  const [members, contrib, loans, guarReg, reqsAll] = await Promise.all([getCollectionEntries('tablebanking', 'member-register'), getCollectionEntries('tablebanking', 'contribution-record'), getCollectionEntriesWithId('tablebanking', 'loan-issued'), getCollectionEntries('tablebanking', 'guarantor-register'), getCollectionEntriesWithId('tablebanking', 'loan-request').catch(() => [])]);
   const today = new Date().toISOString().slice(0, 10), MULT = 3;
-  const bal = {}, late = new Set();
-  for (const l of loans) { if (l.status === 'Written Off') continue; const ch = await computeLoanBalanceChain(l.__id); if (!ch || ch.currentBalance <= 0.5) continue; bal[l.memberName] = (bal[l.memberName] || 0) + ch.currentBalance; const dq = loanDq(l, ch); if (dq && dq.days > 0) late.add(l.memberName); }
+  const bal = {}, late = new Set(), openIds = new Set(), pledgedBy = {};
+  for (const l of loans) { if (l.status === 'Written Off') continue; const ch = await computeLoanBalanceChain(l.__id); if (!ch || ch.currentBalance <= 0.5) continue; openIds.add(l.__id); bal[l.memberName] = (bal[l.memberName] || 0) + ch.currentBalance; const dq = loanDq(l, ch); if (dq && dq.days > 0) late.add(l.memberName); }
+  guarReg.forEach(g => { if (openIds.has(g.loanId)) pledgedBy[g.guarantorMemberName] = (pledgedBy[g.guarantorMemberName] || 0) + (parseFloat(g.amountGuaranteed) || 0); });
+  reqsAll.forEach(r => { if (!['New', 'Seen by Credit Committee', 'Guarantors confirmed'].includes(r.status || 'New')) return; if (loans.some(l => l.memberName === r.memberName && l.date >= r.date)) return; try { (JSON.parse(r.formJson || '{}').guarantors || []).forEach(g => { pledgedBy[g.name] = (pledgedBy[g.name] || 0) + (parseFloat(g.amount) || 0); }); } catch (e) {} });
   const rows = [], excluded = [], out = { notEligible: 0, short: 0, arrears: 0, inactive: 0 };
   members.filter(m => !m.status || m.status === 'Active').forEach(m => {
     const mine = contrib.filter(c => c.memberName === m.memberName && c.contributionType !== 'Share' && c.date);
@@ -4257,9 +4267,9 @@ async function computeLendingCapacity() {
     const st = saveStreak(mine, today);
     if (!st.qualified) { out.short++; excluded.push({ name: m.memberName, savings: sv, why: lfStreakMsg(st) }); return; }
     if (late.has(m.memberName)) { out.arrears++; excluded.push({ name: m.memberName, savings: sv, why: 'Has a loan in arrears' }); return; }
-    const max = Math.max(0, sv * MULT - (bal[m.memberName] || 0));
-    if (max <= 0) { out.notEligible++; excluded.push({ name: m.memberName, savings: sv, why: 'Owes ' + fmtKES(bal[m.memberName] || 0) + ' — already at ' + MULT + '× savings' }); return; }
-    rows.push({ name: m.memberName, savings: sv, owed: bal[m.memberName] || 0, max, cap: 0 });
+    const pl = pledgedBy[m.memberName] || 0, max = Math.max(0, sv * MULT - (bal[m.memberName] || 0) - pl);
+    if (max <= 0) { out.notEligible++; excluded.push({ name: m.memberName, savings: sv, why: (bal[m.memberName] ? 'Owes ' + fmtKES(bal[m.memberName]) : '') + (pl ? (bal[m.memberName] ? ' and has' : 'Has') + ' guaranteed ' + fmtKES(pl) + ' for others' : '') + ' — already at ' + MULT + '× savings' }); return; }
+    rows.push({ name: m.memberName, savings: sv, owed: bal[m.memberName] || 0, pledged: pl, max, cap: 0 });
   });
   out.inactive = members.length - members.filter(m => !m.status || m.status === 'Active').length;
   const pool = Math.max(0, ew.headroom);
@@ -4312,7 +4322,7 @@ async function lcMemberStatus(member) {
   const c = await computeLendingCapacity(), n = member.memberName;
   if (member.status && member.status !== 'Active') return { ok: false, reasons: ['Member status is "' + member.status + '" — only Active members can borrow'], pool: c.pool, MULT: c.MULT };
   const r = c.rows.find(x => x.name === n);
-  if (r) return { ok: true, max: r.max, cap: r.cap, savings: r.savings, owed: r.owed, pool: c.pool, binding: c.binding, ceiling: c.ceiling, MULT: c.MULT };
+  if (r) return { ok: true, max: r.max, cap: r.cap, savings: r.savings, owed: r.owed, pledged: r.pledged || 0, pool: c.pool, binding: c.binding, ceiling: c.ceiling, MULT: c.MULT };
   const x = c.excluded.find(e => e.name === n);
   return { ok: false, reasons: [x ? x.why : 'Not in the active member list'], savings: x ? x.savings : 0, pool: c.pool, MULT: c.MULT };
 }
@@ -4337,12 +4347,12 @@ function memberEligHtml(e) {
   const k = v => fmtKES(Number(v) || 0);
   let h = '<div style="margin:12px 0;padding:14px;border-radius:14px;color:#111;background:' + (e.ok ? '#eaf6ec' : '#fdecea') + ';border:2px solid ' + (e.ok ? '#2e7d32' : '#c62828') + ';">';
   if (e.ok) {
-    const noCash = !(e.cap > 0.5);
-    h += '<div style="font-size:12px;font-weight:700;letter-spacing:.5px;color:#1b5e20;">LOAN ELIGIBILITY</div><div style="font-size:20px;font-weight:800;color:#1b5e20;">✔ ' + (noCash ? 'You qualify for a loan' : 'You are eligible') + '</div>' +
-      (noCash ? '<div style="font-size:15px;font-weight:700;margin:2px 0;color:#8a6d00;">Your limit is ' + k(e.max) + ', but the SACCO has no money to lend right now. Please wait for the next round.</div>' : '<div style="font-size:26px;font-weight:800;margin:2px 0;">Up to ' + k(e.cap) + '</div>') +
-      '<div style="font-size:13px;color:#333;">Your savings ' + k(e.savings) + ' × ' + e.MULT + ' = ' + k(e.savings * e.MULT) + (e.owed ? ', less ' + k(e.owed) + ' you still owe' : '') + '.' + (e.cap < e.max - 0.5 ? ' The SACCO has limited cash now, so the amount is reduced to ' + k(e.cap) + '.' : '') + '</div>' +
-      (e.pool <= 0 && !noCash ? '<div style="font-size:13px;margin-top:4px;color:#8a6d00;"><b>The SACCO has little loan money available right now.</b> Ask an official.</div>' : '') +
-      '<div style="font-size:12px;color:#555;margin-top:6px;">To borrow, apply to the Credit Committee. Each loan is approved after an appraisal.</div>';
+    h += '<div style="font-size:12px;font-weight:700;letter-spacing:.5px;color:#1b5e20;">LOAN ELIGIBILITY</div><div style="font-size:20px;font-weight:800;color:#1b5e20;">✔ You qualify for a loan of up to</div>' +
+      '<div style="font-size:26px;font-weight:800;margin:2px 0;">' + k(e.max) + '</div>' +
+      '<div style="font-size:13px;color:#1b5e20;font-weight:700;">💵 ' + loanNetNote(e.max) + '</div>' +
+      '<div style="font-size:13px;color:#333;margin-top:4px;">Your savings ' + k(e.savings) + ' × ' + e.MULT + ' = ' + k(e.savings * e.MULT) + (e.owed ? ', less ' + k(e.owed) + ' you still owe' : '') + (e.pledged ? ', less ' + k(e.pledged) + ' you guaranteed for others' : '') + '.</div>' +
+      '<div style="font-size:14px;font-weight:800;margin-top:8px;">Please contact the office, or apply by filling the online loan form on the Loan tab.</div>' +
+      '<div style="font-size:12px;color:#555;margin-top:6px;">Each loan is approved by the Credit Committee after an appraisal.</div>';
   } else {
     h += '<div style="font-size:12px;font-weight:700;letter-spacing:.5px;color:#8a1c1c;">LOAN ELIGIBILITY</div><div style="font-size:20px;font-weight:800;color:#8a1c1c;">✘ Not eligible yet</div>' + e.reasons.map(r => '<div style="font-size:14px;margin-top:4px;">• ' + escHtml(r) + '</div>').join('') +
       '<div style="font-size:12px;color:#555;margin-top:6px;">Keep saving every month and clear any arrears. Ask an official if you have questions.</div>';
@@ -5245,15 +5255,19 @@ function lfStreakMsg(s) {
   return 'Saved ' + s.streak + ' month(s) in a row — needs ' + s.needed + ' without missing a month (' + s.need + ' more).';
 }
 
+const LF_MULT = 3;
+const LF_PROFILE_FIELDS = [['idNo', 'ID number'], ['kraPin', 'KRA PIN'], ['contact', 'phone number'], ['nokName', 'next of kin']];
+const LF_PROFILE_DOCS = [['Passport Photo', 'passport photo'], ['National ID (front)', 'ID copy (front)'], ['National ID (back)', 'ID copy (back)'], ['KRA PIN Certificate', 'KRA PIN certificate']];
 async function lfCtx() {
-  const [members, contrib, loans, guar, reqs] = await Promise.all([getCollectionEntriesWithId('tablebanking', 'member-register'), getCollectionEntries('tablebanking', 'contribution-record'), getCollectionEntriesWithId('tablebanking', 'loan-issued'), getCollectionEntries('tablebanking', 'guarantor-register'), getCollectionEntriesWithId('tablebanking', 'loan-request').catch(() => [])]);
+  const [members, contrib, loans, guar, reqs, files] = await Promise.all([getCollectionEntriesWithId('tablebanking', 'member-register'), getCollectionEntries('tablebanking', 'contribution-record'), getCollectionEntriesWithId('tablebanking', 'loan-issued'), getCollectionEntries('tablebanking', 'guarantor-register'), getCollectionEntriesWithId('tablebanking', 'loan-request').catch(() => []), getCollectionEntriesWithId('tablebanking', 'member-files').catch(() => [])]);
   const today = new Date().toISOString().slice(0, 10), bal = {}, late = new Set(), open = new Set();
   for (const l of loans) { if (l.status === 'Written Off') continue; const ch = await computeLoanBalanceChain(l.__id); if (!ch || ch.currentBalance <= 0.5) continue; open.add(l.__id); bal[l.memberName] = (bal[l.memberName] || 0) + ch.currentBalance; const dq = loanDq(l, ch); if (dq && dq.days > 0) late.add(l.memberName); }
   const info = {};
   members.forEach(m => {
     const mine = contrib.filter(c => c.memberName === m.memberName), sv = mine.filter(c => c.contributionType !== 'Share').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
-    const first = mine.filter(c => c.date).map(c => c.date).sort()[0];
-    info[m.memberName] = { m, savings: sv, share: (parseFloat(m.shareCapital) || 0) + mine.filter(c => c.contributionType === 'Share').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0), months: first ? mcMonthsBetween(first, today) : 0, streak: saveStreak(mine, today), owed: bal[m.memberName] || 0, late: late.has(m.memberName), pledged: 0, active: !m.status || m.status === 'Active' };
+    const first = mine.filter(c => c.date).map(c => c.date).sort()[0], mf = files.filter(f => f.memberId === m.__id);
+    const missing = LF_PROFILE_FIELDS.filter(x => !String(m[x[0]] || '').trim()).map(x => x[1]).concat(LF_PROFILE_DOCS.filter(x => !mf.some(f => f.kind === x[0])).map(x => x[1]));
+    info[m.memberName] = { m, savings: sv, share: (parseFloat(m.shareCapital) || 0) + mine.filter(c => c.contributionType === 'Share').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0), months: first ? mcMonthsBetween(first, today) : 0, streak: saveStreak(mine, today), owed: bal[m.memberName] || 0, late: late.has(m.memberName), pledged: 0, active: !m.status || m.status === 'Active', missing, complete: !missing.length };
   });
   guar.forEach(g => { if (open.has(g.loanId) && info[g.guarantorMemberName]) info[g.guarantorMemberName].pledged += parseFloat(g.amountGuaranteed) || 0; });
   reqs.forEach(r => {
@@ -5261,50 +5275,58 @@ async function lfCtx() {
     if (loans.some(l => l.memberName === r.memberName && l.date >= r.date)) return;
     try { (JSON.parse(r.formJson || '{}').guarantors || []).forEach(g => { if (info[g.name]) info[g.name].pledged += parseFloat(g.amount) || 0; }); } catch (e) {}
   });
-  Object.values(info).forEach(i => { i.available = Math.max(0, i.savings - i.pledged); });
+  // a member can stand guarantor up to LF_MULT x savings; what is pledged (and any loan owed) reduces what he or she can still borrow or guarantee
+  Object.values(info).forEach(i => { i.room = Math.max(0, i.savings * LF_MULT - i.owed - i.pledged); });
   return { members, info, today };
 }
 
 function lfCalc(s) {
   const pr = LOAN_PRODUCTS[s.product] || {}, a = parseFloat(s.amount) || 0, term = parseInt(s.term, 10) || pr.term || 0, rate = pr.rate || 0;
   const f = a > 0 && term > 0 ? computeFlatLoanTotals(a, rate, term) : { totalInterest: 0, totalRepayable: 0, insuranceFee: 0 };
-  return { a, term, rate, interest: f.totalInterest, total: f.totalRepayable, insurance: f.insuranceFee, monthly: term ? f.totalRepayable / term : 0, pr };
+  return { a, term, rate, interest: f.totalInterest, total: f.totalRepayable, insurance: f.insuranceFee, processing: f.processingFee || 0, net: a - f.insuranceFee - (f.processingFee || 0), cover: f.totalRepayable + f.insuranceFee + (f.processingFee || 0), monthly: term ? f.totalRepayable / term : 0, pr };
 }
 
-// Rules from the Credit Policy: 6 months in a row, 3x savings, 3+ guarantors (6 months members), savings of borrower + guarantors >= loan + interest, self-guarantee when loan <= own savings
+// Rules: 6 months in a row (3 after a missed month), 3x savings, profile complete, 3+ guarantors (members 6 months, up to date, profile complete),
+// guarantors + own free savings must cover loan + interest + deductions, a member can guarantee up to 3x savings (which reduces what he or she can borrow)
 function lfValidate(s, ctx, elig) {
-  const lines = [], add = (ok, text, warn) => lines.push({ ok, text, warn });
+  const lines = [], add = (ok, text) => lines.push({ ok, text });
   const c = lfCalc(s), me = ctx.info[s.memberName];
-  if (!me) { add(false, 'Choose the applicant.'); return { lines, valid: false, c, self: false }; }
+  if (!me) { add(false, 'Choose the applicant.'); return { lines, valid: false, c, self: false, score: null }; }
+  add(me.complete, me.complete ? 'Your profile is complete.' : 'Your profile is not complete — missing: ' + me.missing.join(', ') + '. Ask an official to update it.');
   add(!!(elig && elig.ok), elig && elig.ok ? 'Qualifies: ' + lfStreakMsg(me.streak) : ((elig && elig.reasons) || ['Not eligible']).join(' '));
-  add(c.a > 0, c.a > 0 ? 'Amount ' + fmtKES(c.a) : 'Type the amount you want.');
-  if (c.a > 0 && elig && elig.ok) add(c.a <= elig.max + 0.5, 'Limit: savings ' + fmtKES(me.savings) + ' × ' + 3 + ' = ' + fmtKES(me.savings * 3) + (me.owed ? ' less ' + fmtKES(me.owed) + ' owed' : '') + ' = ' + fmtKES(elig.max) + (c.a > elig.max + 0.5 ? ' — the amount is too high.' : '.'));
+  add(c.a > 0, c.a > 0 ? 'Amount ' + fmtKES(c.a) + ' — you receive ' + fmtKES(c.net) + ' after the 1% insurance and 2% processing fee.' : 'Type the amount you want.');
+  if (c.a > 0 && elig && elig.ok) add(c.a <= elig.max + 0.5, 'Your limit is ' + fmtKES(elig.max) + ' (savings ' + fmtKES(me.savings) + ' × ' + LF_MULT + (me.owed ? ', less ' + fmtKES(me.owed) + ' owed' : '') + (me.pledged ? ', less ' + fmtKES(me.pledged) + ' guaranteed for others' : '') + ')' + (c.a > elig.max + 0.5 ? ' — the amount is too high.' : '.'));
   if (c.a > 0 && c.pr.max) add(c.a <= c.pr.max, 'This product allows at most ' + fmtKES(c.pr.max) + '.');
   if (c.a > 0 && c.pr.term) add(c.term > 0 && c.term <= c.pr.term, 'Repayment period ' + c.term + ' month(s); this product allows up to ' + c.pr.term + '.');
   add(!!String(s.purpose || '').trim(), String(s.purpose || '').trim() ? 'Purpose given.' : 'Say what the loan is for.');
-  const selfAvail = Math.max(0, me.savings - me.owed - me.pledged);
-  const self = c.a > 0 && c.a <= selfAvail + 0.5;
-  if (self) add(true, 'Self-guaranteed: the loan is not more than your own free savings (' + fmtKES(selfAvail) + '), so guarantors are not needed.');
+  const selfAvail = Math.max(0, me.savings - me.owed - me.pledged), self = c.a > 0 && c.a <= selfAvail + 0.5;
+  let covered = selfAvail, need = Math.max(0, c.cover - selfAvail);
+  if (self) { add(true, 'Self-guaranteed: the loan is not more than your own free savings, so guarantors are not needed.'); covered = c.cover; }
   else if (c.a > 0) {
-    const gs = (s.guarantors || []).filter(g => g.name || g.amount);
-    const named = gs.filter(g => g.name);
+    add(true, 'Guarantors must cover ' + fmtKES(need) + ' between them (loan + interest + deductions ' + fmtKES(c.cover) + ' less your free savings ' + fmtKES(selfAvail) + ').');
+    const gs = (s.guarantors || []).filter(g => g.name || g.amount), named = gs.filter(g => g.name), seen = {}; let accepted = 0, sum = 0;
     add(named.length >= LF_MIN_GUARANTORS, named.length + ' guarantor(s) chosen — at least ' + LF_MIN_GUARANTORS + ' needed.');
-    const seen = {};
     gs.forEach((g, i) => {
-      const gi = ctx.info[g.name], tag = 'Guarantor ' + (i + 1) + (g.name ? ' (' + g.name + ')' : '');
+      const gi = ctx.info[g.name], tag = 'Guarantor ' + (i + 1) + (g.name ? ' (' + g.name + ')' : ''), no = why => add(false, tag + ' cannot be accepted: ' + why);
       if (!g.name) { add(false, tag + ': choose a member.'); return; }
-      if (g.name === s.memberName) { add(false, tag + ': you cannot guarantee your own loan.'); return; }
-      if (seen[g.name]) { add(false, tag + ': already listed.'); return; } seen[g.name] = 1;
-      if (!gi || !gi.active) { add(false, tag + ': must be an active member.'); return; }
-      if (gi.months < 6) add(false, tag + ': must have been a member for 6 months (only ' + gi.months + ').');
-      if (gi.late) add(false, tag + ': has a loan in arrears.');
+      if (g.name === s.memberName) { no('you cannot guarantee your own loan.'); return; }
+      if (seen[g.name]) { no('already listed.'); return; } seen[g.name] = 1;
+      if (!gi || !gi.active) { no('not an active member.'); return; }
+      if (!gi.complete) { no('profile is not complete (the member must complete it first).'); return; }
+      if (gi.months < 6) { no('not yet a member for 6 months.'); return; }
+      if (gi.late) { no('has a loan in arrears.'); return; }
+      if (gi.streak.streak < 1) { no('not up to date with monthly savings.'); return; }
       const amt = parseFloat(g.amount) || 0;
-      add(amt > 0 && amt <= gi.available + 0.5, tag + ': guarantees ' + fmtKES(amt) + ' of ' + fmtKES(gi.available) + ' free savings' + (amt <= 0 ? ' — type the amount.' : amt > gi.available + 0.5 ? ' — too much.' : '.'));
+      if (!(amt > 0)) { add(false, tag + ': type the amount to guarantee.'); return; }
+      if (amt > gi.room + 0.5) { no('cannot guarantee that amount. Reduce it or choose another guarantor.'); return; }
+      add(true, tag + ' accepted for ' + fmtKES(amt) + '.'); accepted++; sum += amt;
     });
-    const sum = named.reduce((a, g) => a + (parseFloat(g.amount) || 0), 0), need = c.total - selfAvail;
-    add(sum + 0.5 >= need, 'Your free savings ' + fmtKES(selfAvail) + ' + guarantees ' + fmtKES(sum) + ' = ' + fmtKES(selfAvail + sum) + ' must cover loan + interest ' + fmtKES(c.total) + (sum + 0.5 >= need ? '.' : ' — add ' + fmtKES(need - sum) + ' more.'));
+    add(sum + 0.5 >= need, 'Guarantees accepted ' + fmtKES(sum) + (sum + 0.5 >= need ? ' — enough.' : ' — add ' + fmtKES(need - sum) + ' more.'));
+    covered = selfAvail + sum;
   }
-  return { lines, valid: lines.every(l => l.ok), c, self, selfAvail };
+  const score = c.a > 0 && c.cover > 0 ? Math.min(999, Math.round(covered / c.cover * 100)) : null;
+  if (score !== null) add(score >= 50, 'Appraisal rating ' + score + '%' + (score < 50 ? ' — RED ALERT: below 50%.' : score < 100 ? ' — security is not yet fully covered.' : ' — fully covered.'));
+  return { lines, valid: lines.every(l => l.ok), c, self, selfAvail, score, need };
 }
 
 // ---------- the printable / downloadable form ----------
@@ -5314,7 +5336,7 @@ function lfDoc(s, ctx, auto) {
   const me = ctx && ctx.info && ctx.info[s.memberName], c = blank ? null : lfCalc(s), k = v => fmtKES(Number(v) || 0);
   const f = (v, w) => '<span class="v" style="min-width:' + (w || 120) + 'px">' + (blank || v === '' || v == null ? '&nbsp;' : e(v)) + '</span>';
   const gRows = []; const gl = s.guarantors || [];
-  for (let i = 0; i < Math.max(4, gl.length); i++) { const g = gl[i] || {}, gi = (ctx && ctx.info && ctx.info[g.name]) || {}, m = gi.m || {}; gRows.push('<tr><td>' + (i + 1) + '</td><td>' + e(m.memberNumber || '') + '</td><td>' + e(m.idNo || '') + '</td><td>' + e(g.name || '') + '</td><td>' + e(m.contact || '') + '</td><td class="n">' + (g.name ? k(gi.savings) : '') + '</td><td class="n">' + (g.amount ? k(g.amount) : '') + '</td><td style="width:90px"></td></tr>'); }
+  for (let i = 0; i < Math.max(4, gl.length); i++) { const g = gl[i] || {}, gi = (ctx && ctx.info && ctx.info[g.name]) || {}, m = gi.m || {}; gRows.push('<tr><td>' + (i + 1) + '</td><td>' + e(m.memberNumber || '') + '</td><td>' + e(m.idNo || '') + '</td><td>' + e(g.name || '') + '</td><td>' + e(m.contact || '') + '</td><td class="n">' + (g.amount ? k(g.amount) : '') + '</td><td style="width:90px"></td></tr>'); }
   const m = (me && me.m) || {};
   const css = '@page{size:A4;margin:12mm}body{font-family:Arial,sans-serif;color:#111;font-size:12px;margin:0;padding:14px}.hd{display:flex;align-items:center;gap:12px;border-bottom:3px solid #1f6e3d;padding-bottom:8px}.hd img{height:62px}.hd h1{margin:0;font-size:19px;color:#1f6e3d}.hd div div{font-size:11px}h2{font-size:13px;background:#1f6e3d;color:#fff;padding:4px 8px;margin:12px 0 6px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #777;padding:5px 6px;vertical-align:top}th{background:#e8f0e8;text-align:left;font-size:11px}td.n{text-align:right}.row{display:flex;gap:14px;margin:5px 0}.row>div{flex:1}.l{font-size:10.5px;color:#444;display:block}.v{display:inline-block;border-bottom:1px solid #333;min-height:16px;padding:0 4px;width:100%;box-sizing:border-box}.box{display:inline-block;width:12px;height:12px;border:1px solid #333;margin-right:5px;vertical-align:middle}.sig{display:flex;gap:30px;margin-top:26px}.sig div{flex:1;border-top:1px solid #000;padding-top:3px;font-size:11px}.small{font-size:10.5px;color:#333}.noprint{margin-bottom:10px}@media print{.noprint{display:none}}';
   const fld = (label, val, w) => '<div' + (w ? ' style="flex:' + w + '"' : '') + '><span class="l">' + label + '</span>' + f(val) + '</div>';
@@ -5333,13 +5355,13 @@ function lfDoc(s, ctx, auto) {
     '<div class="row">' + fld('Interest (KES)', c ? Math.round(c.interest) : '') + fld('Total to repay (KES)', c ? Math.round(c.total) : '') + fld('Monthly instalment (KES)', c ? Math.round(c.monthly) : '') + fld('Insurance 1% (KES)', c ? Math.round(c.insurance) : '') + '</div>' +
     '<div class="row">' + fld('Pay the loan to: M-Pesa number', s.payTo || '', 2) + fld('Or bank / account', '', 2) + '</div>' +
     '<h2>3. MEMBERS\' REPAYMENT GUARANTEE</h2><p class="small">We, the undersigned guarantors, agree jointly and severally that our savings and deposits with East Kamagak Farmers SACCO are pledged as security for this loan. If the borrower defaults, the Treasurer may deduct the balance, interest and costs from the savings pledged. Each guarantor states the amount guaranteed and signs. A guarantor stays bound until the loan is fully repaid.</p>' +
-    '<table><tr><th>#</th><th>Member No.</th><th>ID No.</th><th>Name</th><th>Tel</th><th>Savings (KES)</th><th>Amount guaranteed (KES)</th><th>Signature</th></tr>' + gRows.join('') + '</table>' +
+    '<table><tr><th>#</th><th>Member No.</th><th>ID No.</th><th>Name</th><th>Tel</th><th>Amount guaranteed (KES)</th><th>Signature</th></tr>' + gRows.join('') + '</table>' +
     '<p class="small">' + (s.self ? '<b>Self-guaranteed:</b> this loan is not more than the applicant\'s own free savings, so guarantors are not required.' : 'Savings of the applicant plus the amounts guaranteed must be equal to or more than the loan plus interest.') + '</p>' +
     '<h2>4. DECLARATION</h2><p class="small">I declare that I have read and understood the lending requirements, that the information given is true, and that I will repay the loan as agreed. I authorise the SACCO to recover any unpaid amount from my savings and from my guarantors.</p>' +
     '<div class="sig"><div>Applicant\'s signature</div><div>Date</div></div>' +
     '<h2>5. DOCUMENTS ATTACHED</h2>' + chk('Copy of the applicant\'s national ID or passport', false) + chk('Copies of the national ID or passport of each guarantor', false) + chk('Investment plan (agricultural loans) / school or college fee structure / proof for emergency / other: ________', false) +
     '<h2>6. FOR OFFICIAL USE ONLY</h2><div class="row">' + fld('Received by', '') + fld('Date', '') + fld('Savings checked (6 months in a row)', '') + '</div>' +
-    '<div class="row">' + fld('Guarantors confirmed by Committee (name / date)', '', 2) + fld('Appraisal / risk rating', '') + '</div>' +
+    '<div class="row">' + fld('Guarantors confirmed by Committee (name / date)', '', 2) + fld('Appraisal rating (automatic)', blank || s.score == null ? '' : s.score + '%' + (s.score < 50 ? ' - RED ALERT' : '')) + '</div>' +
     '<div class="row"><div><span class="l">Decision</span><span class="box"></span>Approved &nbsp; <span class="box"></span>Approved in part &nbsp; <span class="box"></span>Declined</div>' + fld('Amount approved (KES)', '') + '</div>' +
     '<div class="sig"><div>Credit Committee Chair</div><div>Treasurer</div><div>Chairperson</div></div>' +
     '</body></html>';
@@ -5374,23 +5396,23 @@ async function lfOpen(member, opts) {
     '<div style="' + L + '">What is the loan for?</div><input id="lfWhy" type="text" style="' + I + '">' +
     '<div style="' + L + '">Pay the loan to M-Pesa number</div><input id="lfPay" type="tel" style="' + I + '">' +
     '<div id="lfCalc" style="background:#eef4fb;border-radius:12px;padding:10px;font-size:13px;margin-bottom:8px;"></div>' +
-    '<div style="font-size:15px;font-weight:800;color:#1b5e20;margin:8px 0 2px;">🤝 Guarantors</div><div id="lfGInfo" style="font-size:12.5px;color:#444;margin-bottom:6px;">Policy: at least 3 guarantors who have been members for 6 months. Your free savings plus what they guarantee must cover the loan plus interest. Not needed if the loan is not more than your own free savings.</div>' +
+    '<div style="font-size:15px;font-weight:800;color:#1b5e20;margin:8px 0 2px;">🤝 Guarantors</div><div id="lfGInfo" style="font-size:12.5px;color:#444;margin-bottom:6px;">Choose at least 3 guarantors. The system checks each one against the Credit Policy and accepts or rejects them. Their savings are private and are not shown.</div>' +
     '<div id="lfG"></div><div id="lfGBtns">' + btn('lfAddG', '➕ Add guarantor', '#6a1b9a') + btn('lfSplit', '✨ Suggest amounts', '#00838f') + '</div>' +
-    '<div id="lfCheck" style="margin:10px 0;font-size:13px;"></div>' +
+    '<div id="lfScore" style="margin:10px 0 0;"></div><div id="lfCheck" style="margin:10px 0;font-size:13px;"></div>' +
     '<label style="font-size:13px;display:block;margin:6px 0;"><input type="checkbox" id="lfDecl"> I declare the information is true. I agree my guarantors and I will sign the printed form, and attach copies of our ID cards.</label>' +
-    '<div>' + btn('lfSend', '📤 Send application', '#1b5e20') + btn('lfPrint', '🖨 Print filled form', '#1565c0') + btn('lfDown', '⬇ Download filled form', '#1565c0') + '</div>' +
+    '<div style="font-size:12px;color:#8a6d00;margin-top:4px;">Print and download open when every line above is green.</div><div>' + btn('lfSend', '📤 Send application', '#1b5e20') + btn('lfPrint', '🖨 Print filled form', '#1565c0') + btn('lfDown', '⬇ Download filled form', '#1565c0') + '</div>' +
     '<div id="lfMsg" style="font-size:13px;margin-top:6px;"></div></div>';
   document.body.appendChild(ov);
   const q = id => ov.querySelector('#' + id); let M = member || null, elig = null, gRowsEl = [];
   q('lfX').onclick = () => ov.remove(); ov.onclick = ev => { if (ev.target === ov) ov.remove(); };
   q('lfBlankP').onclick = () => lfPrint(null, ctx); q('lfBlankD').onclick = () => lfDownload(null, ctx);
-  const memOpts = () => actives.filter(m => m.memberName !== (M && M.memberName)).map(m => { const i = ctx.info[m.memberName] || { available: 0 }; return '<option value="' + escHtml(m.memberName) + '">' + escHtml(m.memberName) + ' — free ' + fmtKES(i.available) + '</option>'; }).join('');
+  const memOpts = () => actives.filter(m => m.memberName !== (M && M.memberName)).map(m => { return '<option value="' + escHtml(m.memberName) + '">' + escHtml(m.memberName) + '</option>'; }).join('');
   const addG = () => {
     if (gRowsEl.length >= LF_MAX_GUARANTORS) return;
     const d = document.createElement('div'); d.style.cssText = 'border:1px solid #d7c4f0;background:#faf5ff;border-radius:10px;padding:8px;margin-bottom:8px;';
-    d.innerHTML = '<div style="font-size:12px;font-weight:800;color:#6a1b9a;">Guarantor ' + (gRowsEl.length + 1) + '</div><select style="' + I + '"><option value="">— choose member —</option>' + memOpts() + '</select><input type="number" inputmode="numeric" placeholder="Amount he/she guarantees (KES)" style="' + I + '"><div class="gi" style="font-size:12px;color:#555;"></div>';
-    q('lfG').appendChild(d); const o = { d, sel: d.querySelector('select'), amt: d.querySelector('input'), gi: d.querySelector('.gi') };
-    o.sel.onchange = () => { const i = ctx.info[o.sel.value]; o.gi.textContent = i ? 'Savings ' + fmtKES(i.savings) + ' · already pledged ' + fmtKES(i.pledged) + ' · free ' + fmtKES(i.available) + ' · member ' + i.months + ' month(s)' : ''; refresh(); };
+    d.innerHTML = '<div style="font-size:12px;font-weight:800;color:#6a1b9a;">Guarantor ' + (gRowsEl.length + 1) + '</div><select style="' + I + '"><option value="">— choose member —</option>' + memOpts() + '</select><input type="number" inputmode="numeric" placeholder="Amount he/she guarantees (KES)" style="' + I + '">';
+    q('lfG').appendChild(d); const o = { d, sel: d.querySelector('select'), amt: d.querySelector('input') };
+    o.sel.onchange = () => refresh();
     o.amt.oninput = () => refresh(); gRowsEl.push(o);
   };
   const readState = () => ({ date: ctx.today, memberName: M ? M.memberName : '', product: q('lfProd').value, amount: q('lfAmt').value, term: q('lfTerm').value, purpose: q('lfWhy').value.trim(), payTo: q('lfPay').value.trim(), guarantors: gRowsEl.map(o => ({ name: o.sel.value, amount: o.amt.value })).filter(g => g.name || g.amount) });
@@ -5405,7 +5427,11 @@ async function lfOpen(member, opts) {
     const v = lfValidate(s, ctx, elig); s.self = v.self;
     q('lfG').style.display = q('lfGBtns').style.display = v.self ? 'none' : '';
     q('lfCheck').innerHTML = v.lines.map(l => '<div style="padding:2px 0;color:' + (l.ok ? '#1b5e20' : '#c62828') + ';">' + (l.ok ? '✔ ' : '✘ ') + escHtml(l.text) + '</div>').join('');
+    const sc = v.score, scCol = sc == null ? '#9e9e9e' : sc < 50 ? '#c62828' : sc < 100 ? '#e69500' : '#2e7d32';
+    q('lfScore').innerHTML = sc == null ? '' : '<div style="border-radius:12px;padding:10px;color:#fff;background:' + scCol + ';"><div style="font-size:12px;font-weight:700;">APPRAISAL RATING</div><div style="font-size:26px;font-weight:800;">' + sc + '%' + (sc < 50 ? ' ⚠ RED ALERT' : sc < 100 ? ' — not fully covered' : ' ✔ fully covered') + '</div></div>';
+    s.score = sc;
     q('lfSend').disabled = !(v.valid && q('lfDecl').checked); q('lfSend').style.opacity = q('lfSend').disabled ? .45 : 1;
+    [q('lfPrint'), q('lfDown')].forEach(b => { b.disabled = !v.valid; b.style.opacity = v.valid ? 1 : .45; });
     ov._s = s; ov._v = v;
   };
   const setMember = async m => { M = m; elig = null; gRowsEl = []; q('lfG').innerHTML = ''; if (m) { for (let i = 0; i < LF_MIN_GUARANTORS; i++) addG(); const mm = (ctx.info[m.memberName] || {}).m || {}; q('lfPay').value = mm.contact || ''; } refresh(); };
@@ -5414,19 +5440,20 @@ async function lfOpen(member, opts) {
   q('lfAddG').onclick = () => { addG(); refresh(); };
   q('lfSplit').onclick = () => {
     const s = readState(), c = lfCalc(s), me = M && ctx.info[M.memberName]; if (!me || !(c.a > 0)) { q('lfMsg').textContent = 'Choose the amount first.'; return; }
-    let need = c.total - Math.max(0, me.savings - me.owed - me.pledged); const list = gRowsEl.filter(o => o.sel.value);
+    let need = c.cover - Math.max(0, me.savings - me.owed - me.pledged); const list = gRowsEl.filter(o => { const gi = ctx.info[o.sel.value]; return o.sel.value && gi && gi.active && gi.complete && gi.months >= 6 && !gi.late && gi.streak.streak >= 1 && o.sel.value !== M.memberName; });
     if (!list.length) { q('lfMsg').textContent = 'Choose the guarantors first, then tap Suggest.'; return; }
-    list.forEach((o, i) => { const av = ctx.info[o.sel.value].available, share = Math.min(av, Math.ceil(Math.max(0, need) / (list.length - i) / 100) * 100); o.amt.value = share; need -= share; });
+    list.forEach((o, i) => { const av = ctx.info[o.sel.value].room, share = Math.min(av, Math.ceil(Math.max(0, need) / (list.length - i) / 100) * 100); o.amt.value = share; need -= share; });
     q('lfMsg').textContent = ''; refresh();
   };
   const needValid = () => { if (!ov._v || !ov._v.valid) { q('lfMsg').innerHTML = '<span style="color:#c62828">Fix the red lines first.</span>'; return false; } return true; };
-  q('lfPrint').onclick = async () => { await refresh(); lfPrint(ov._s, ctx); }; q('lfDown').onclick = async () => { await refresh(); lfDownload(ov._s, ctx); };
+  q('lfPrint').onclick = async () => { await refresh(); if (!needValid()) return; lfPrint(ov._s, ctx); }; q('lfDown').onclick = async () => { await refresh(); if (!needValid()) return; lfDownload(ov._s, ctx); };
   q('lfSend').onclick = async () => {
     await refresh(); if (!needValid() || !q('lfDecl').checked) return; const s = ov._s, c = lfCalc(s);
     s.formNo = 'LA-' + ctx.today.replace(/-/g, '') + '-' + Math.floor(Math.random() * 900 + 100);
     const gtxt = s.self ? 'Self-guaranteed' : s.guarantors.filter(g => g.name).map(g => g.name + ' (' + fmtKES(parseFloat(g.amount) || 0) + ')').join('; ');
     q('lfSend').disabled = true; q('lfMsg').textContent = 'Sending…';
     try {
+      s.score = ov._v ? ov._v.score : null;
       await db.collection(storageKey('tablebanking', 'loan-request')).add({ date: ctx.today, memberName: s.memberName, loanProduct: s.product, amountRequested: String(c.a), termMonths: String(c.term), purpose: s.purpose, status: 'New', guarantorsText: gtxt + ' — to be confirmed by the Committee', formJson: JSON.stringify(s) });
       auditLog('loan application', 'loan-request', '', s.memberName + ' · ' + s.product + ' · ' + fmtKES(c.a) + ' · ' + gtxt);
       q('lfMsg').innerHTML = '<div style="background:#eaf6ec;border-radius:10px;padding:10px;color:#1b5e20;"><b>✔ Application sent.</b> Now print the form, have each guarantor sign it, attach copies of the ID cards and hand it to an official. The Committee will confirm with your guarantors.</div>';
@@ -6457,7 +6484,7 @@ async function memberHomeRender(memberName) {
   home += '<div style="display:flex;gap:8px;margin:8px 0;">' + tile('savings', '💰', t('Savings'), k(have), pct + '%') + tile('loan', '💳', t('Loan'), running.length ? k(d.outstanding) : '✔ 0', running.length ? (overdue ? '⚠' : '') : t('You have no running loan.').slice(0, 22), overdue) + tile('pay', '📲', t('Pay'), PORTAL_PAY.paybill, 'Paybill') + '</div>';
   const urgent = running.map(r => ({ r, n: nextOf(r) })).filter(x => x.n.next).sort((a, b) => a.n.next.due.localeCompare(b.n.next.due))[0];
   if (urgent) { const nx = urgent.n.next, late = nx.status === 'Overdue', dl = recDaysFrom(today, nx.due); home += '<div ' + goTab('loan') + ' class="mh-card" style="border-radius:14px;padding:12px;margin:8px 0;cursor:pointer;background:' + (late ? '#fdecea' : '#eef4fb') + ';color:#111;"><div style="font-size:11px;font-weight:800;color:' + (late ? '#c62828' : '#1565c0') + ';">' + (late ? t('OVERDUE INSTALMENT') : t('NEXT INSTALMENT')) + '</div><div style="font-size:18px;font-weight:800;">' + k(nx.unpaid) + ' <span style="font-size:13px;font-weight:600;">' + t('by') + ' ' + escHtml(nx.due) + '</span></div><div style="font-size:12.5px;font-weight:700;color:' + (late ? '#c62828' : '#333') + ';">' + (late ? t('Overdue by') + ' ' + nx.late + ' ' + t('days') : (dl === 0 ? t('Due today') : dl + ' ' + t('days left'))) + '</div></div>'; }
-  if (e) home += '<div ' + goTab('loan') + ' class="mh-card" style="border-radius:14px;padding:11px 12px;margin:8px 0;cursor:pointer;color:#111;background:' + (e.ok && e.cap > 0.5 ? '#eaf6ec' : e.ok ? '#fff8e1' : '#fdecea') + ';font-size:13.5px;font-weight:700;">' + (e.ok && e.cap > 0.5 ? '✔ ' + (mhLang === 'sw' ? 'Unaweza kukopa hadi ' : 'You can borrow up to ') + k(e.cap) : e.ok ? '✔ ' + (mhLang === 'sw' ? 'Unastahili mkopo, lakini SACCO haina pesa sasa' : 'You qualify, but the SACCO has no money to lend now') : '✘ ' + (mhLang === 'sw' ? 'Bado hujastahili mkopo' : 'Not eligible for a loan yet')) + ' <span style="color:#1b5e20;">›</span></div>';
+  if (e) home += '<div ' + goTab('loan') + ' class="mh-card" style="border-radius:14px;padding:11px 12px;margin:8px 0;cursor:pointer;color:#111;background:' + (e.ok ? '#eaf6ec' : '#fdecea') + ';font-size:13.5px;font-weight:700;">' + (e.ok ? '✔ ' + (mhLang === 'sw' ? 'Unastahili mkopo hadi ' + k(e.max) + '. Wasiliana na ofisi au jaza fomu mtandaoni.' : 'You qualify for up to ' + k(e.max) + '. Contact the office or apply online.') : '✘ ' + (mhLang === 'sw' ? 'Bado hujastahili mkopo' : 'Not eligible for a loan yet')) + ' <span style="color:#1b5e20;">›</span></div>';
   const live = notices.filter(n => !n.showUntil || n.showUntil >= today).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   const meet = notices.filter(n => n.kind === 'Next meeting' && n.eventDate && n.eventDate >= today && (!n.showUntil || n.showUntil >= today)).sort((a, b) => a.eventDate.localeCompare(b.eventDate))[0];
   const plain = live.filter(n => n.kind !== 'Next meeting').slice(0, 5);
@@ -6538,7 +6565,7 @@ async function memberHomeRender(memberName) {
     '<button type="button" id="mhLfPrint" style="padding:10px 12px;border-radius:10px;border:none;background:#1565c0;color:#fff;font-weight:800;font-size:14px;margin:3px 4px 3px 0;">🖨 ' + (mhLang === 'sw' ? 'Chapisha tupu' : 'Print blank') + '</button>' +
     '<button type="button" id="mhLfDown" style="padding:10px 12px;border-radius:10px;border:none;background:#6a1b9a;color:#fff;font-weight:800;font-size:14px;margin:3px 0;">⬇ ' + (mhLang === 'sw' ? 'Pakua' : 'Download') + '</button>');
   const prods = Object.keys(LOAN_PRODUCTS).filter(x => LOAN_PRODUCTS[x].rate);
-  if (e && e.ok && e.cap > 0.5 && !openReq && active && !overdue) ln += mhCard(mhTitle('➕', t('Request a loan')) + '<button type="button" id="mhReqOpen" style="width:100%;padding:12px;border-radius:12px;border:none;background:#1b5e20;color:#fff;font-weight:800;font-size:15px;">' + t('Request a loan') + '</button>' +
+  if (e && e.ok && !openReq && active && !overdue) ln += mhCard(mhTitle('➕', t('Request a loan')) + '<button type="button" id="mhReqOpen" style="width:100%;padding:12px;border-radius:12px;border:none;background:#1b5e20;color:#fff;font-weight:800;font-size:15px;">' + t('Request a loan') + '</button>' +
     '<div id="mhReqForm" style="display:none;margin-top:10px;display:none;gap:8px;"><select id="rqProd" style="padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px;width:100%;margin-bottom:8px;">' + prods.map(x => '<option>' + escHtml(x) + '</option>').join('') + '</select><input id="rqAmt" type="number" inputmode="numeric" placeholder="' + t('Amount you want (KES)') + '" style="padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px;width:100%;box-sizing:border-box;margin-bottom:8px;"><input id="rqTerm" type="number" inputmode="numeric" placeholder="' + t('Months to repay') + '" style="padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px;width:100%;box-sizing:border-box;margin-bottom:8px;"><input id="rqWhy" type="text" placeholder="' + t('Purpose of the loan') + '" style="padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px;width:100%;box-sizing:border-box;margin-bottom:8px;"><div id="rqMsg" style="font-size:12.5px;color:#c62828;margin-bottom:6px;"></div><button type="button" id="rqSend" style="width:100%;padding:12px;border-radius:12px;border:none;background:#1565c0;color:#fff;font-weight:800;font-size:15px;">' + t('Send request') + '</button><div style="font-size:11px;color:#777;margin-top:5px;">' + (mhLang === 'sw' ? 'Ombi lako hupelekwa kwa maafisa. Mkopo huidhinishwa baada ya kukaguliwa.' : 'Your request goes to the officials. A loan is approved only after appraisal.') + '</div></div>');
   ln += mhCard(mhTitle('🧮', t('LOAN CALCULATOR')) + '<div style="display:grid;gap:8px;"><select id="mhProd" style="padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px;">' + prods.map(x => '<option>' + escHtml(x) + '</option>').join('') + '</select>' +
     '<input id="mhAmt" type="number" inputmode="numeric" placeholder="' + t('Amount you want (KES)') + '" style="padding:10px;border-radius:10px;border:1px solid #bbb;font-size:15px;">' +
@@ -6593,7 +6620,7 @@ async function memberHomeRender(memberName) {
     const f = computeFlatLoanTotals(a, pr.rate, tt), warn = [];
     if (pr.max && a > pr.max) warn.push((mhLang === 'sw' ? 'Mkopo huu una kikomo cha ' : 'This product allows at most ') + k(pr.max) + '.');
     if (tt > pr.term) warn.push((mhLang === 'sw' ? 'Muda wa kawaida ni miezi ' : 'Usual term for this loan is ') + pr.term + (mhLang === 'sw' ? '.' : ' months.'));
-    out.innerHTML = '<div style="background:#eef4fb;border-radius:12px;padding:10px;"><div style="font-size:12px;color:#555;">' + t('You would pay about') + '</div><div style="font-size:22px;font-weight:800;color:#1565c0;">' + k(f.totalRepayable / tt) + ' <span style="font-size:13px;">' + t('a month for') + ' ' + tt + '</span></div><div style="font-size:12.5px;margin-top:4px;">' + (mhLang === 'sw' ? 'Riba ' : 'Interest ') + k(f.totalInterest) + ' (' + pr.rate + '% / ' + (mhLang === 'sw' ? 'mwezi' : 'month') + ') · Total ' + k(f.totalRepayable) + ' · ' + (mhLang === 'sw' ? 'Bima' : 'Insurance') + ' 1% = ' + k(f.insuranceFee) + '</div></div>' +
+    out.innerHTML = '<div style="background:#eef4fb;border-radius:12px;padding:10px;"><div style="font-size:12px;color:#555;">' + t('You would pay about') + '</div><div style="font-size:22px;font-weight:800;color:#1565c0;">' + k(f.totalRepayable / tt) + ' <span style="font-size:13px;">' + t('a month for') + ' ' + tt + '</span></div><div style="font-size:12.5px;margin-top:4px;">' + (mhLang === 'sw' ? 'Riba ' : 'Interest ') + k(f.totalInterest) + ' (' + pr.rate + '% / ' + (mhLang === 'sw' ? 'mwezi' : 'month') + ') · Total ' + k(f.totalRepayable) + ' · ' + (mhLang === 'sw' ? 'Bima' : 'Insurance') + ' 1% = ' + k(f.insuranceFee) + ' · ' + (mhLang === 'sw' ? 'Ada ya usindikaji' : 'Processing fee') + ' 2% = ' + k(f.processingFee) + '</div><div style="margin-top:6px;padding:8px;border-radius:10px;background:#eaf6ec;font-size:14px;color:#1b5e20;">💵 ' + (mhLang === 'sw' ? 'Utapokea' : 'You receive') + ' <b>' + k(f.netPayout) + '</b> ' + (mhLang === 'sw' ? 'baada ya makato' : 'after the deductions') + '</div></div>' +
       warn.map(w => '<div style="color:#c62828;font-size:12.5px;margin-top:4px;">⚠ ' + w + '</div>').join('');
   };
   [ps, am, tm].forEach(x => x.addEventListener('input', calc)); calc();
