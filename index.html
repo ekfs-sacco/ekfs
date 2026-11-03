@@ -2423,7 +2423,7 @@ function wireLoanAutoFill() {
       const members = await getCollectionEntries('tablebanking', 'member-register');
       const totalShareCapital = sumField(members, 'shareCapital');
       const warnings = [];
-      if (!stNow.qualified) warnings.push('⚠ This member has saved only ' + monthsSaving + ' month(s) in a row — policy requires 6 months in a row, or 3 months in a row after a missed month.');
+      if (!stNow.qualified) warnings.push('⚠ This member has saved only ' + monthsSaving + ' month(s) in a row — policy requires 6 months in a row, or 3 more months in a row after a missed month.');
       if (principal > totalShareCapital * 0.2) warnings.push('⚠ This loan exceeds 20% of total share capital (' + fmtKES(totalShareCapital * 0.2) + ') — policy caps any single loan at that threshold.');
       let warnBox = document.getElementById('loanEligibilityWarning');
       if (!warnBox) {
@@ -5234,14 +5234,14 @@ function saveStreak(contribs, today) {
   const broke = first && k >= first ? k : null;
   // a member who had already qualified (6 in a row earlier) and then missed a month needs only REQUAL_MONTHS more in a row; a member who never qualified still needs the full 6
   let needed = QUAL_MONTHS, hadQualified = false;
-  if (broke) { let run = 0, mm = first; while (mm < broke) { if (ok(mm)) { run++; if (run >= QUAL_MONTHS) hadQualified = true; } else run = 0; const p = mm.split('-').map(Number), d = new Date(p[0], p[1], 1); mm = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); } if (hadQualified) needed = REQUAL_MONTHS; }
+  if (broke) { let run = 0, mm = first; while (mm < broke) { if (ok(mm)) { run++; if (run >= QUAL_MONTHS) hadQualified = true; } else run = 0; const p = mm.split('-').map(Number), d = new Date(p[0], p[1], 1); mm = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); } needed = REQUAL_MONTHS; }
   const months = []; let m = cur; for (let i = 0; i < 12; i++) { months.unshift({ key: m, amt: by[m] || 0, ok: ok(m) }); m = prev(m); }
   return { streak, first, broke, months, needed, hadQualified, qualified: streak >= needed, need: Math.max(0, needed - streak) };
 }
 function lfStreakMsg(s) {
   if (s.qualified) return 'Saved ' + s.streak + ' months in a row — qualifies.';
   if (!s.first) return 'No savings recorded yet — needs ' + QUAL_MONTHS + ' months in a row.';
-  if (s.broke) return 'Missed saving in ' + lfMonthName(s.broke) + ', so the member is disqualified. Saved ' + s.streak + ' month(s) in a row since — needs ' + s.needed + ' in a row' + (s.hadQualified ? ' to qualify again' : ' (the 6 months start again)') + ' (' + s.need + ' more).';
+  if (s.broke) return 'Missed saving in ' + lfMonthName(s.broke) + ', so the member is disqualified. Saved ' + s.streak + ' month(s) in a row since — needs ' + s.needed + ' in a row to qualify again (' + s.need + ' more).';
   return 'Saved ' + s.streak + ' month(s) in a row — needs ' + s.needed + ' without missing a month (' + s.need + ' more).';
 }
 
