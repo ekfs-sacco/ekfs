@@ -1051,7 +1051,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AJ</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AK</span></p>
   </div>
 </div>
 
@@ -5848,6 +5848,43 @@ async function cmtRender() {
 }
 { const _ru = renderUsersTable; renderUsersTable = async function () { await _ru.apply(this, arguments); try { await cmtRender(); } catch (e) { console.warn(e); } }; }
 // ================= END CARDS =================
+
+// ===================== STATEMENT SEARCH (Admin only, standalone) =====================
+// The statement data is NOT part of this page. The Admin loads the file once; it is kept only on this device (IndexedDB).
+var SS_MEM = null;
+function ssDb() { return new Promise((res, rej) => { try { const r = indexedDB.open('ekfs_statement', 1); r.onupgradeneeded = () => r.result.createObjectStore('f'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }); }
+async function ssGet() { try { const d = await ssDb(); return await new Promise(res => { const q = d.transaction('f').objectStore('f').get('html'); q.onsuccess = () => res(q.result || SS_MEM); q.onerror = () => res(SS_MEM); }); } catch (e) { return SS_MEM; } }
+async function ssPut(html) { SS_MEM = html; try { const d = await ssDb(); await new Promise((res, rej) => { const t = d.transaction('f', 'readwrite'); t.objectStore('f').put(html, 'html'); t.oncomplete = res; t.onerror = rej; }); } catch (e) {} }
+async function ssDel() { SS_MEM = null; try { const d = await ssDb(); await new Promise(res => { const t = d.transaction('f', 'readwrite'); t.objectStore('f').delete('html'); t.oncomplete = res; t.onerror = res; }); } catch (e) {} }
+function ssPick() { return new Promise(res => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.html,text/html'; i.onchange = () => { const f = i.files && i.files[0]; if (!f) { res(null); return; } const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => res(null); r.readAsText(f); }; i.click(); });
+}
+async function ssOpen(query) {
+  const se = getSession(); if (!se || se.role !== 'admin') return;
+  let html = await ssGet();
+  if (!html) { alert('Choose your Combined Statement Search file (the .html file). It is kept only on this phone, not in the system.'); html = await ssPick(); if (!html) return; if (html.indexOf('const DATA') < 0) { alert('That does not look like the Combined Statement Search file.'); return; } await ssPut(html); }
+  const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:10100;display:flex;flex-direction:column;';
+  ov.innerHTML = '<div style="display:flex;gap:6px;align-items:center;padding:8px;background:#1f3864;color:#fff"><b style="flex:1">🔎 Statement search</b><button type="button" id="ssNew" style="padding:6px 10px;border-radius:8px;border:none">Replace file</button><button type="button" id="ssDel" style="padding:6px 10px;border-radius:8px;border:none">Remove from phone</button><button type="button" id="ssX" style="padding:6px 12px;border-radius:8px;border:none;font-weight:700">Close</button></div><iframe id="ssF" style="flex:1;border:0;width:100%"></iframe>';
+  document.body.appendChild(ov);
+  const fr = ov.querySelector('#ssF');
+  fr.onload = () => { try { if (query) { const q = fr.contentDocument.getElementById('q'); if (q) { q.value = query; q.dispatchEvent(new Event('input', { bubbles: true })); } } } catch (e) {} };
+  fr.srcdoc = html;
+  ov.querySelector('#ssX').onclick = () => ov.remove();
+  ov.querySelector('#ssNew').onclick = async () => { const h = await ssPick(); if (!h) return; if (h.indexOf('const DATA') < 0) { alert('That does not look like the Combined Statement Search file.'); return; } await ssPut(h); fr.srcdoc = h; };
+  ov.querySelector('#ssDel').onclick = async () => { if (!confirm('Remove the statement file from this phone? You can load it again later.')) return; await ssDel(); ov.remove(); };
+}
+function ssBarSetup() {
+  const se = getSession(), anchor = document.getElementById('memberSearchInput'); let bar = document.getElementById('ssBar');
+  const ok = !!se && se.role === 'admin';
+  if (!ok || !anchor) { if (bar) bar.remove(); return; }
+  if (bar) return;
+  const host = anchor.parentNode; bar = document.createElement('div'); bar.id = 'ssBar'; bar.style.cssText = 'margin-bottom:12px;padding-bottom:10px;border-bottom:1px dashed #cfd8cf;';
+  bar.innerHTML = '<label for="ssInput">🔎 Statement search <span style="font-weight:400;color:#777;font-size:12px">(Admin only)</span></label><div style="display:flex;gap:6px"><input type="text" id="ssInput" placeholder="Name or phone in bank / M-Pesa statements…" autocomplete="off" style="flex:1"><button type="button" id="ssGo" class="btn-primary btn-small">Search</button></div>';
+  host.insertBefore(bar, document.querySelector('label[for="memberSearchInput"]') || host.firstChild);
+  const go = () => ssOpen(bar.querySelector('#ssInput').value.trim());
+  bar.querySelector('#ssGo').onclick = go; bar.querySelector('#ssInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+}
+setInterval(ssBarSetup, 1500); document.addEventListener('DOMContentLoaded', ssBarSetup);
+// ================= END STATEMENT SEARCH =================
 
 // ===================== RECORDS TABS (admin / chairperson / official) =====================
 const REC_TABS = [['entries', '📝', 'Entries', '#37474f', '#eceff1'], ['overview', '📊', 'Overview', '#1b5e20', '#e8f5e9'], ['risk', '⚠️', 'Risk', '#b71c1c', '#fdecea'], ['lend', '💰', 'Lending', '#0d47a1', '#e3f2fd'], ['grant', '🎁', 'Grants', '#6a1b9a', '#f3e5f5'], ['members', '👥', 'Per member', '#e65100', '#fff3e0']];
