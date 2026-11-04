@@ -1051,7 +1051,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AI</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AJ</span></p>
   </div>
 </div>
 
@@ -1302,7 +1302,7 @@ firebase.initializeApp(firebaseConfig);
 
 // ===================== SECURE SIGN-IN (Firebase Authentication) =====================
 var fbAuth = null; try { fbAuth = firebase.auth(); } catch (e) { console.warn('Auth SDK unavailable', e); }
-var AUTH_MAXVER = 5;
+var AUTH_MAXVER = 8;
 function fbEmail(u, v) { return String(u || '').toLowerCase().replace(/[^a-z0-9._-]/g, '_') + (v > 1 ? '.v' + v : '') + '@ekfs.local'; }
 function fbPw(p) { return 'ekfs:' + p; }
 var authReady = new Promise(res => { if (!fbAuth) return res(); let done = false; const fin = () => { if (!done) { done = true; res(); } }; try { const un = fbAuth.onAuthStateChanged(() => { try { un(); } catch (e) {} fin(); }); } catch (e) { fin(); } setTimeout(fin, 4000); });
@@ -1870,10 +1870,10 @@ if (importMobilizersBtn) {
 
 function genTempPassword() { const c = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let o = ''; const a = new Uint32Array(8); (window.crypto || window.msCrypto).getRandomValues(a); a.forEach(n => { o += c[n % c.length]; }); return o; }
 async function resetUserPassword(docId, data) {
-  const typed = prompt('Reset password for "' + data.username + '" (' + roleLabel(data.role === undefined ? 'admin' : data.role) + ').\n\nType a new password (at least 6 characters), or leave blank to generate one.\nThe old password stops working immediately and they are signed out.');
+  const typed = prompt('Reset password for "' + data.username + '" (' + roleLabel(data.role === undefined ? 'admin' : data.role) + ').\n\nType the new password (at least 6 characters).\nThe old password stops working immediately and they are signed out. They can change it themselves after signing in.');
   if (typed === null) return;
-  const pw = typed.trim() || genTempPassword();
-  if (pw.length < 6) { alert('The password must be at least 6 characters.'); return; }
+  const pw = typed.trim();
+  if (pw.length < 6) { alert('The password must be at least 6 characters. Nothing was changed.'); return; }
   manageStatusMsg.textContent = 'Resetting…';
   try {
     let ver = 0;
@@ -5726,6 +5726,8 @@ function cardLoginSetup() {
 }
 document.addEventListener('DOMContentLoaded', cardLoginSetup); cardLoginSetup();
 function cardNavSetup() {
+  const nav0 = document.getElementById('viewNav');
+  if (nav0 && getSession() && !document.getElementById('pwNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'pwNavBtn'; b.textContent = '🔑 My password'; b.style.cssText = 'flex:0 0 auto;background:#37474f!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', pwChangeOpen); nav0.appendChild(b); }
   const nav = document.getElementById('viewNav'); if (!nav || !cardAllowed()) return;
   [['attNavBtn', '📋 Attendance', '#6a1b9a', attOpen], ['scanNavBtn', '📷 Scan card', '#00695c', scanProfileOpen]].forEach(a => {
     if (document.getElementById(a[0])) return; const b = document.createElement('button'); b.type = 'button'; b.id = a[0]; b.textContent = a[1];
@@ -5753,6 +5755,40 @@ function cardFabSetup() {
   } else if (!on && bn) bn.remove();
 }
 document.addEventListener('DOMContentLoaded', cardNavSetup); cardNavSetup(); cardFabSetup(); setInterval(() => { cardNavSetup(); cardFabSetup(); }, 1500);
+
+// ---- change my own password ----
+async function pwChangeOpen() {
+  const se = getSession(); if (!se) return; const sw = (typeof mhLang !== 'undefined' && mhLang === 'sw');
+  const inp = (id, ph) => '<input type="password" id="' + id + '" placeholder="' + ph + '" autocomplete="off" style="width:100%;padding:11px;margin:5px 0;border:1px solid #bbb;border-radius:8px;box-sizing:border-box;font-size:15px">';
+  const ov = toolsOverlay(sw ? 'Badilisha nenosiri' : 'Change my password', inp('pwCur', sw ? 'Nenosiri la sasa' : 'Current password') + inp('pwNew', sw ? 'Nenosiri jipya (herufi 6 au zaidi)' : 'New password (at least 6 characters)') + inp('pwNew2', sw ? 'Rudia nenosiri jipya' : 'Repeat the new password') + '<button type="button" id="pwGo" class="btn-primary" style="width:100%;margin-top:8px">' + (sw ? 'Hifadhi' : 'Save new password') + '</button><div id="pwMsg" style="margin-top:8px;font-weight:700"></div><p style="font-size:12px;color:#666">' + (sw ? 'Ukisahau nenosiri, msimamizi anaweza kukuwekea jipya.' : 'If you forget your password, the Admin can set a new one for you.') + '</p>');
+  const q = id => ov.querySelector('#' + id), say = (t, ok) => { const m = q('pwMsg'); m.textContent = t; m.style.color = ok ? '#1b5e20' : '#b71c1c'; };
+  q('pwGo').onclick = async () => {
+    const cur = q('pwCur').value, nw = q('pwNew').value, n2 = q('pwNew2').value;
+    if (!cur) { say(sw ? 'Weka nenosiri la sasa.' : 'Enter your current password.'); return; }
+    if (nw.length < 6) { say(sw ? 'Nenosiri jipya liwe na herufi 6 au zaidi.' : 'The new password must be at least 6 characters.'); return; }
+    if (nw !== n2) { say(sw ? 'Manenosiri mapya hayalingani.' : 'The two new passwords do not match.'); return; }
+    if (nw === cur) { say(sw ? 'Chagua nenosiri tofauti.' : 'Choose a password different from the current one.'); return; }
+    q('pwGo').disabled = true; say('…', true);
+    try {
+      const snap = await db.collection(USERS_COLLECTION).where('username', '==', se.username).get();
+      if (snap.empty) { say('Account not found.'); q('pwGo').disabled = false; return; }
+      const ref = snap.docs[0].ref, data = snap.docs[0].data(); let mine = 0; try { mine = parseInt(localStorage.getItem('ekfs_authver_' + se.username) || '0', 10); } catch (e) {}
+      if (data.qrVer && mine === data.qrVer && mine !== (data.authVer || 1)) { say('You signed in with a QR card. Sign out and sign in with your normal password first.'); q('pwGo').disabled = false; return; }
+      const upd = { pwChangedAt: new Date().toISOString() }; const u = fbAuth && fbAuth.currentUser;
+      if (u && u.email) {
+        try { await u.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(u.email, fbPw(cur))); } catch (e) { say(sw ? 'Nenosiri la sasa si sahihi.' : 'The current password is not correct.'); q('pwGo').disabled = false; return; }
+        try { await u.updatePassword(fbPw(nw)); } catch (e) { say(sw ? 'Imeshindikana. Jaribu tena.' : 'Could not change it right now. Check your internet and try again.'); q('pwGo').disabled = false; return; }
+        if (data.password) upd.password = nw;
+      } else {
+        if (!data.password || data.password !== cur) { say(sw ? 'Nenosiri la sasa si sahihi.' : 'The current password is not correct.'); q('pwGo').disabled = false; return; }
+        let ver = 0; try { ver = await fbCreateAccount(se.username, nw, Math.max(data.authVer || 1, data.qrVer || 0) + 1, true); } catch (e) {}
+        upd.password = nw; if (ver) { upd.authVer = ver; upd.authMigrated = true; try { localStorage.setItem('ekfs_authver_' + se.username, String(ver)); } catch (e) {} }
+      }
+      await ref.update(upd); auditLog('password changed', 'app_users', snap.docs[0].id, se.username);
+      say(sw ? 'Nenosiri limebadilishwa. Tumia jipya kuingia.' : 'Password changed. Use the new one next time you sign in.', true); q('pwCur').value = q('pwNew').value = q('pwNew2').value = '';
+    } catch (e) { console.warn(e); say(sw ? 'Imeshindikana. Angalia mtandao.' : 'Could not save. Check your internet connection.'); q('pwGo').disabled = false; }
+  };
+}
 // ---- Committee officials in Manage Access ----
 function cmtPeople(members) {
   const people = [];
@@ -5768,8 +5804,8 @@ function cmtPeople(members) {
   });
   return people;
 }
-async function cmtCreate(username, role, linked) {
-  const pw = genTempPassword(); let ver = 0;
+async function cmtCreate(username, role, linked, given) {
+  const pw = given || genTempPassword(); let ver = 0;
   try { ver = await fbCreateAccount(username, pw, 1, true); } catch (e) { console.warn(e); }
   await db.collection(USERS_COLLECTION).add({ username, password: pw, role, linkedMemberName: linked, authMigrated: !!ver, authVer: ver || 1 });
   auditLog('account created', 'app_users', '', username + ' · ' + role + ' · ' + linked);
@@ -5797,7 +5833,7 @@ async function cmtRender() {
     btn.disabled = true;
     try {
       if (uid) { const u = users.find(x => x.__id === uid); if (!confirm('Assign account "' + u.username + '" to ' + linked + ' as ' + roleLabel(role) + '?')) { btn.disabled = false; return; } await db.collection(USERS_COLLECTION).doc(uid).update({ role, linkedMemberName: linked }); auditLog('account updated', 'app_users', uid, u.username + ' · ' + role + ' · ' + linked); alert(linked + ' is now assigned to account "' + u.username + '" as ' + roleLabel(role) + '.'); }
-      else { const un = cmtUsername(p, users); const name = prompt('Username for ' + linked + ':', un); if (!name) { btn.disabled = false; return; } if (users.some(x => x.username === name.trim())) { alert('That username already exists.'); btn.disabled = false; return; } const pw = await cmtCreate(name.trim(), role, linked); alert('Login created for ' + linked + '\n\nUsername: ' + name.trim() + '\nPassword: ' + pw + '\nRole: ' + roleLabel(role) + '\n\nGive it to them privately.'); }
+      else { const un = cmtUsername(p, users); const name = prompt('Username for ' + linked + ':', un); if (!name) { btn.disabled = false; return; } if (users.some(x => x.username === name.trim())) { alert('That username already exists.'); btn.disabled = false; return; } const typedPw = prompt('Password for ' + name.trim() + ' (at least 6 characters). Leave blank to generate one:', ''); if (typedPw === null) { btn.disabled = false; return; } if (typedPw.trim() && typedPw.trim().length < 6) { alert('The password must be at least 6 characters.'); btn.disabled = false; return; } const pw = await cmtCreate(name.trim(), role, linked, typedPw.trim()); alert('Login created for ' + linked + '\n\nUsername: ' + name.trim() + '\nPassword: ' + pw + '\nRole: ' + roleLabel(role) + '\n\nGive it to them privately.'); }
     } catch (e) { alert('Could not save. Check your internet connection.'); }
     renderUsersTable();
   });
@@ -6921,7 +6957,7 @@ async function memberHomeRender(memberName) {
   let me = mhTitleRow('👤', t('Me')) + mhCard(mhTitle('⚙️', t('Settings')) + '<div id="mhBar" style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" data-a="lang" class="mhTool">' + (mhLang === 'sw' ? '🇬🇧 English' : '🇰🇪 Kiswahili') + '</button><button type="button" data-a="size" class="mhTool">Aa</button><button type="button" data-a="dark" class="mhTool">' + (mhPrefGet('dark', '0') === '1' ? '☀️' : '🌙') + '</button><button type="button" data-a="share" class="mhTool">📤 ' + t('Share') + '</button></div><div data-slot="print" style="margin-top:8px;"></div>') +
     mhCard(mhTitle('👤', t('MY DETAILS')) + dl2(t('Member number'), member.memberNumber) + dl2('Sex', member.sex) + dl2(t('Phone'), member.contact) + dl2('ID', member.idNo) + dl2('CIG', member.cigName) + dl2(t('Next of kin'), [member.nokName, member.nokRelationship].filter(Boolean).join(' — ')) + dl2(t('Next of kin') + ' ' + t('Phone'), member.nokPhone) +
       '<button type="button" id="mhCorrect" style="margin-top:10px;width:100%;padding:12px;border-radius:12px;border:none;background:#7b1fa2;color:#fff;font-weight:800;font-size:14px;box-shadow:0 2px 5px rgba(0,0,0,.2);">✎ ' + t('Ask the SACCO to correct my details') + '</button>') +
-    '<div style="font-size:11.5px;color:#777;margin:6px 4px;">' + (mhLang === 'sw' ? 'Unaona rekodi zako tu. Ukiona kosa, wasiliana na afisa.' : 'You are viewing your own records only. If any figure looks wrong, contact an official.') + '</div>';
+    '<button type="button" id="mhPw" style="margin-top:10px;width:100%;padding:12px;border-radius:12px;border:none;background:#37474f;color:#fff;font-weight:800;font-size:14px;">🔑 ' + (mhLang === 'sw' ? 'Badilisha nenosiri langu' : 'Change my password') + '</button>' + '<div style="font-size:11.5px;color:#777;margin:6px 4px;">' + (mhLang === 'sw' ? 'Unaona rekodi zako tu. Ukiona kosa, wasiliana na afisa.' : 'You are viewing your own records only. If any figure looks wrong, contact an official.') + '</div>';
   // ================= MOUNT =================
   root.innerHTML = MH_TABS.map(x => '<div id="mhPane-' + x[0] + '" style="display:none;min-height:72vh;">' + ({ home, savings: sv, loan: ln, pay, me })[x[0]] + '</div>').join('');
   const slot = (name, node) => { const s2 = root.querySelector('[data-slot="' + name + '"]'); if (s2 && node) s2.appendChild(node); };
@@ -6980,6 +7016,7 @@ async function memberHomeRender(memberName) {
     if (f1) f1.onclick = () => lfOpen(member, { onDone: () => memberHomeRender(memberName) }); if (f2) f2.onclick = () => lfPrint(null, null); if (f3) f3.onclick = () => lfDownload(null, null); }
   const cr = root.querySelector('#mhCancelReq');
   if (cr && R) cr.onclick = async () => { if (!confirm(mhLang === 'sw' ? 'Futa ombi hili?' : 'Cancel this request?')) return; try { await db.collection(storageKey('tablebanking', 'loan-request')).doc(R.__id).update({ status: 'Cancelled' }); auditLog('loan request cancelled', 'loan-request', R.__id, memberName); memberHomeRender(memberName); } catch (x) { alert('Could not cancel right now.'); } };
+  root.querySelector('#mhPw').onclick = () => pwChangeOpen();
   root.querySelector('#mhCorrect').onclick = async () => {
     const txt = prompt(mhLang === 'sw' ? 'Nini kirekebishwe?' : 'What should be corrected? (e.g. "My phone number is now 07...")');
     if (!txt || !txt.trim()) return;
