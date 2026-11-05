@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AR</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AS</span></p>
   </div>
 </div>
 
@@ -5604,18 +5604,25 @@ async function cardResolve(parsed) {
   if (!ok) return { err: 'This card is not valid (it may have been replaced by a new one).' };
   return { member: m };
 }
+let CARD_PHOTOS = {};
+async function cardLoadPhotos() {
+  try { const fs = await getCollectionEntriesWithId('tablebanking', 'member-files'); const m = {};
+    fs.filter(f => f.kind === 'Passport Photo' && f.data).sort((x, y) => String(x.uploadedAt).localeCompare(String(y.uploadedAt))).forEach(f => { m[f.memberId] = f.data; }); CARD_PHOTOS = m; } catch (e) { console.warn('card photos', e); }
+}
 function cardHtml(member, payload, withLogin) {
   const logo = (document.querySelector('img') || {}).src || '';
   const qr = QRGEN.svg(payload, 120);
   const nm = escHtml(member.memberName || '');
-  return '<div class="cardwrap"><div class="card front"><div class="ch"><img src="' + logo + '"><div><b>EAST KAMAGAK FARMERS SACCO</b><br><span>Membership Card</span></div></div><div class="cb"><div class="cq">' + qr + '</div><div class="ci"><div class="cn">' + nm + '</div>' + (posFor(member) ? '<div class="cp">' + escHtml(posFor(member)) + '</div>' : '') + '<div>Member No: <b>' + escHtml(member.memberNumber || '') + '</b></div>' + (member.cigName ? '<div>CIG: ' + escHtml(member.cigName) + '</div>' : '') + '<div>Joined: ' + escHtml(member.dateJoined || '') + '</div></div></div><div class="cf">' + (withLogin ? 'Scan to sign in · attendance · profile' : 'Scan for attendance · profile') + '</div></div>' +
-    '<div class="card back"><div class="bt">This card belongs to the member named on the front. If found, return to East Kamagak Farmers SACCO.</div><div class="bt">Tel: 0740 193 141<br>eastkamagaksavingsandcredit@gmail.com</div>' + (withLogin ? '<div class="bw">⚠ This QR code also signs you in to your member account. Keep it private.</div>' : '') + '<div class="bs">Signature: ______________</div></div></div>';
+  const ph = CARD_PHOTOS[member.__id];
+  const photo = ph ? '<img class="cph" src="' + ph + '">' : '<div class="cph cno">No photo</div>';
+  return '<div class="cardwrap"><div class="card front"><div class="ch"><img src="' + logo + '"><div><b>EAST KAMAGAK FARMERS SACCO</b><br><span>Membership Card</span><br><span>Reg. No. CS/31276</span></div></div><div class="cb">' + photo + '<div class="ci"><div class="cn">' + nm + '</div>' + (posFor(member) ? '<div class="cp">' + escHtml(posFor(member)) + '</div>' : '') + '<div>Member No: <b>' + escHtml(member.memberNumber || '') + '</b>' + (member.cigName ? ' · CIG: ' + escHtml(member.cigName) : '') + '</div><div>Joined: ' + escHtml(member.dateJoined || '') + '</div></div></div></div>' +
+    '<div class="card back"><div class="cqb">' + qr + '</div><div class="qn">' + (withLogin ? 'Scan to sign in · attendance · profile' : 'Scan for attendance · profile') + '</div><div class="bt">This card belongs to the member named on the front. If found, return to East Kamagak Farmers SACCO.</div><div class="bt">Tel: 0740 193 141<br>eastkamagaksavingsandcredit@gmail.com</div>' + (withLogin ? '<div class="bw">⚠ This QR code also signs you in to your member account. Keep it private.</div>' : '') + '<div class="bs">Signature: ______________</div></div></div>';
 }
-const CARD_CSS = '.cardwrap{display:inline-block;margin:6px;vertical-align:top;page-break-inside:avoid}.card{width:85.6mm;height:54mm;border:1px solid #1b5e20;border-radius:3mm;overflow:hidden;margin-bottom:3mm;background:#fff;position:relative;font-family:Arial,sans-serif;font-size:10px;color:#111;box-sizing:border-box}.ch{background:#1b5e20;color:#fff;display:flex;align-items:center;gap:6px;padding:4px 8px}.ch img{width:30px;height:30px;background:#fff;border-radius:50%}.ch b{font-size:11px}.ch span{font-size:9px}.cb{display:flex;gap:8px;padding:6px 8px;align-items:center}.cq svg{width:30mm;height:30mm;display:block}.cp{font-weight:bold;color:#fff;background:#1b5e20;border-radius:3px;padding:1px 5px;margin-bottom:4px;display:inline-block;font-size:9px}.cn{font-size:13px;font-weight:bold;margin-bottom:4px;color:#1b5e20}.ci div{margin:2px 0}.cf{position:absolute;bottom:0;left:0;right:0;background:#e8f5e9;text-align:center;font-size:8px;padding:2px}.back{padding:8px}.bt{margin-bottom:8px;font-size:9px}.bw{background:#fff3cd;border:1px solid #c9a000;padding:4px;font-size:9px;font-weight:bold;margin-bottom:8px}.bs{position:absolute;bottom:8px;left:8px;font-size:9px}@media print{.cardwrap{margin:2mm}}';
+const CARD_CSS = '.cardwrap{display:inline-block;margin:6px;vertical-align:top;page-break-inside:avoid;text-align:center}.card{width:85.6mm;min-height:54mm;border:1px solid #1b5e20;border-radius:3mm;overflow:hidden;margin-bottom:3mm;background:#fff;position:relative;font-family:Arial,sans-serif;font-size:10px;color:#111;box-sizing:border-box;text-align:center}.ch{background:#1b5e20;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;padding:4px 8px;text-align:center}.ch img{width:30px;height:30px;background:#fff;border-radius:50%}.ch b{font-size:11px}.ch span{font-size:9px}.cb{display:flex;flex-direction:column;align-items:center;padding:5px 8px 6px}.cph{width:22mm;height:26mm;object-fit:cover;border:1px solid #1b5e20;border-radius:2mm;display:block;margin-bottom:3px}.cno{display:flex;align-items:center;justify-content:center;color:#999;font-size:9px;background:#f2f2f2}.cp{font-weight:bold;color:#fff;background:#1b5e20;border-radius:3px;padding:1px 5px;margin-bottom:3px;display:inline-block;font-size:9px}.cn{font-size:13px;font-weight:bold;margin-bottom:3px;color:#1b5e20}.ci div{margin:2px 0}.back{padding:6px 8px 8px}.cqb svg{width:28mm;height:28mm;display:block;margin:0 auto}.qn{font-size:8px;color:#1b5e20;margin:1px 0 5px}.bt{margin-bottom:5px;font-size:9px}.bw{background:#fff3cd;border:1px solid #c9a000;padding:4px;font-size:9px;font-weight:bold;margin-bottom:5px}.bs{font-size:9px;margin-top:6px}@media print{.cardwrap{margin:2mm}}';
 function cardPrint(cards) { openPrintWindow('Membership Cards', '<style>' + CARD_CSS + '</style>' + cards.join('')); }
 async function cardOpen(member) {
   if (!cardAllowed()) { alert('Only Admin, Chairperson, Official or Bookkeeper can issue cards.'); return; }
-  let code; try { code = await cardEnsure(member); } catch (e) { alert('Could not create the card code. Check your internet connection.'); return; }
+  await cardLoadPhotos(); let code; try { code = await cardEnsure(member); } catch (e) { alert('Could not create the card code. Check your internet connection.'); return; }
   const ov = toolsOverlay('Membership card — ' + (member.memberName || ''), '');
   const body = ov.querySelector('div > div:nth-child(2)') || ov.firstChild;
   let host = document.createElement('div'); ov.firstChild.appendChild(host);
@@ -5666,7 +5673,7 @@ async function idcOpen() {
     ov.querySelectorAll('[data-p]').forEach(b => b.onclick = async () => { const m = members.find(x => x.__id === b.dataset.p); b.disabled = true; try { cards([m]); } finally { b.disabled = false; } });
   };
   const cards = async (list) => {
-    const withLogin = ov.querySelector('#idcLogin').checked; const out = []; let n = 0, noAcc = 0;
+    const withLogin = ov.querySelector('#idcLogin').checked; const out = []; await cardLoadPhotos(); let n = 0, noAcc = 0;
     if (withLogin && !confirm('This makes a new sign-in code for ' + list.length + ' member' + (list.length === 1 ? '' : 's') + ' (members with a portal account). Their normal passwords keep working. Continue?')) return;
     for (const m of list) {
       say('Preparing ' + (++n) + ' of ' + list.length + '…');
@@ -5684,7 +5691,7 @@ async function cardBulk() {
   if (!cardAllowed()) return;
   const members = (await getCollectionEntriesWithId('tablebanking', 'member-register')).filter(m => (m.status || 'Active') === 'Active');
   if (!confirm('Prepare attendance cards for ' + members.length + ' active members?')) return;
-  const out = []; for (const m of members) { try { out.push(cardHtml(m, cardPayload(m, await cardEnsure(m)))); } catch (e) {} }
+  await cardLoadPhotos(); const out = []; for (const m of members) { try { out.push(cardHtml(m, cardPayload(m, await cardEnsure(m)))); } catch (e) {} }
   cardPrint(out);
 }
 // ---- camera scanner ----
