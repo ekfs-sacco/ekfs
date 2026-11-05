@@ -1051,7 +1051,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AL</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AM</span></p>
   </div>
 </div>
 
@@ -4055,6 +4055,7 @@ async function computeEarlyWarning() {
     { group: 'Liquidity', label: 'Cash vs member deposits', value: liqPct + '%', sub: 'Cash ' + fmtKES(cash) + ' of deposits ' + fmtKES(deposits) + ' (guide: keep at least 15%)', level: lv(liqPct < 15, liqPct < 25) },
     { group: 'Liquidity', label: 'Loans ÷ deposits', value: ltd + '%', sub: fmtKES(pq.total) + ' lent out (guide: amber above 80%, red above 100%)', level: lv(ltd > 100, ltd > 80) },
     { group: 'Liquidity', label: 'Safe to lend now', value: fmtKES(Math.max(0, headroom)), sub: headroom <= 0 ? 'Below the 15% savings reserve — pause new loans' : 'Cash from savings above the 15% reserve (share capital is not lent)', level: lv(headroom <= 0, headroom < deposits * 0.1) },
+    { group: 'Liquidity', label: 'Reserved (15% of savings)', value: fmtKES(reserve), sub: 'Kept aside, never lent. Savings ' + fmtKES(savOnly), level: lv(false, false) },
     { group: 'Liquidity', label: 'Cash flow, last 2 months', value: negRun ? 'Negative' : 'OK', sub: 'Net ' + net.slice(-2).map(x => fmtKES(x)).join(' then '), level: lv(negRun, net[3] < 0) },
     { group: 'Member trust', label: 'Members saving this month', value: part + '%', sub: 'Last month ' + partPrev + '% · ' + saverIn(cur) + ' of ' + active.length + ' active members', level: lv(part < partPrev - 10 && partPrev > 0, part < partPrev) },
     { group: 'Member trust', label: 'Savings vs previous 3 months', value: (dropPct > 0 ? '−' + dropPct : '+' + Math.abs(dropPct)) + '%', sub: fmtKES(thisM) + ' this month, average ' + fmtKES(avgPrior), level: lv(dropPct > 40, dropPct > 20) },
@@ -4071,7 +4072,7 @@ async function computeEarlyWarning() {
   if (ind[3].level !== 'good') actions.push('Cash flow is turning negative: review what went out last month and bring forward loan collections.');
   if (ind[4].level !== 'good' || ind[5].level !== 'good' || dormant.length) actions.push('TRUST: call dormant members, hold a short open meeting, share each member\'s statement, and explain how loans and savings are protected.');
   if (ind[8].level !== 'good') actions.push('ARREARS: follow up the watch-list this week (call, then guarantors) and offer restructuring to members with genuine difficulty.');
-  return { ind, actions, dormant, cash, deposits, headroom, savOnly, shares };
+  return { ind, actions, dormant, cash, deposits, headroom, savOnly, shares, reserve };
 }
 async function renderEarlyWarning(container) {
   const e = await computeEarlyWarning();
@@ -4278,13 +4279,14 @@ async function computeLendingCapacity() {
   const demand = rows.reduce((a, r) => a + r.max, 0), allocated = rows.reduce((a, r) => a + r.cap, 0);
   const binding = demand > pool + 0.5;
   const ceiling = binding && rows.length ? Math.max(...rows.map(r => r.cap)) : null;
-  return { pool, cash: ew.cash, deposits: ew.deposits, eligible: rows.length, rows, excluded, demand, allocated, binding, ceiling, out, MULT };
+  return { pool, reserve: ew.reserve, savOnly: ew.savOnly, shares: ew.shares, cash: ew.cash, deposits: ew.deposits, eligible: rows.length, rows, excluded, demand, allocated, binding, ceiling, out, MULT };
 }
 async function renderLendingCapacity(container) {
   const c = await computeLendingCapacity();
   const label = document.createElement('div'); label.className = 'gs-section-label'; label.style.color = '#1b5e20'; label.textContent = 'Safe Lending Capacity'; container.appendChild(label);
   const col = c.pool <= 0 ? '#c62828' : c.binding ? '#b8860b' : '#2e7d32';
   const card = (num, l, sub, color) => { const d = document.createElement('div'); d.className = 'gs-card'; d.style.borderLeftColor = color || '#2e7d32'; d.innerHTML = '<div class="gs-num" style="color:' + (color || '#2e7d32') + ';font-weight:800;">' + num + '</div><div class="gs-lbl" style="font-weight:700;">' + l + '</div><div class="gs-lbl">' + sub + '</div>'; container.appendChild(d); };
+  card(fmtKES(c.reserve), 'Reserved 15% (kept aside)', '15% of savings ' + fmtKES(c.savOnly) + '. Share capital ' + fmtKES(c.shares) + ' is also not lent', '#6a1b9a');
   card(fmtKES(c.pool), 'Safe to lend now', 'Cash ' + fmtKES(c.cash) + ' less share capital and a 15% reserve of savings', col);
   card(c.eligible, 'Eligible members', '6+ months saving, no arrears, room under ' + c.MULT + '× savings — <b>tap to see the list</b>', '#1b5e20');
   { const last = container.lastChild; last.style.cursor = 'pointer'; last.onclick = lcOpenList; }
