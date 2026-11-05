@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AU</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AV</span></p>
   </div>
 </div>
 
@@ -6701,7 +6701,11 @@ async function updateGroupSavings() {
     const tbTotalRegistration = sumField(tbMembers, 'registrationFee');
     const tbTotalShareCapital = sumField(tbMembers, 'shareCapital');
     const tbRegFundBalance = tbTotalRegistration - tbTotalExpenditure;
-    const tbCombinedSavingsShareBalance = (tbTotalContrib + tbTotalShareCapital) - tbTotalOtherExpenses;
+    const tbSavingsOnly = sumField(tbContrib.filter(isSavRec), 'amount');
+    let tbFullShare = 0, tbFullCnt = 0, tbPartShare = 0, tbPartCnt = 0;
+    tbMembers.filter(m => !m.status || m.status === 'Active').forEach(m => { const cp = parseFloat(m.shareCapital) || 0; if (cp >= 1000) { tbFullShare += cp; tbFullCnt++; } else if (cp > 0) { tbPartShare += cp; tbPartCnt++; } });
+    const tbFromShares = Math.min(tbTotalOtherExpenses, tbTotalShareCapital), tbFromSavings = Math.max(0, tbTotalOtherExpenses - tbTotalShareCapital);
+    const tbCombinedSavingsShareBalance = (tbSavingsOnly + tbTotalShareCapital) - tbTotalOtherExpenses;
 
     const REG_FEE_TARGET = 200;
     const SHARE_CAPITAL_TARGET = 1000;
@@ -6722,9 +6726,11 @@ async function updateGroupSavings() {
     });
 
     const tbCards = [
-      ['Total Contributions', tbTotalContrib, 'kes'],
+      ['Total Savings (savings records only)', tbSavingsOnly, 'kes'],
+      ['Total Contributions (all types, incl. shares &amp; fees paid in)', tbTotalContrib, 'kes'],
       ['Total Registration Amount', tbTotalRegistration, 'kes'],
-      ['Total Share Capital', tbTotalShareCapital, 'kes'],
+      ['Total Share Capital (fully paid KES 1,000+ · ' + tbFullCnt + ' members)', tbFullShare, 'kes'],
+      ['Partly Paid Shares (' + tbPartCnt + ' members)', tbPartShare, 'kes'],
       ['Total Loans Issued', tbTotalLoans, 'kes'],
       ['Total Repaid', tbTotalRepaid, 'kes'],
       ['Outstanding Loans', tbOutstanding, 'kes'],
@@ -6732,7 +6738,7 @@ async function updateGroupSavings() {
       ['Fines Collected', tbTotalFines, 'kes'],
       ['Total Money Spent (Expenditure)', tbTotalExpenditure, 'kes'],
       ['Registration Fund Balance (Reg. Fees − Expenditure)', tbRegFundBalance, 'kes'],
-      ['Total Other Expenses', tbTotalOtherExpenses, 'kes'],
+      ['Total Other Expenses (from share capital ' + fmtKES(tbFromShares) + ' · from savings ' + fmtKES(tbFromSavings) + ')', tbTotalOtherExpenses, 'kes'],
       ['Savings + Share Capital Balance (After Other Expenses)', tbCombinedSavingsShareBalance, 'kes'],
       ['SACCO Banking Records Fund Balance', tbFundBalance, 'kes'],
       ['Total Fully Registered Members (Reg. Fee ' + REG_FEE_TARGET + ' + Share Capital ' + SHARE_CAPITAL_TARGET + ')', fullyRegistered, 'count'],
