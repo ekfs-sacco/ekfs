@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AO</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AQ</span></p>
   </div>
 </div>
 
@@ -1876,10 +1876,9 @@ if (importMobilizersBtn) {
 
 function genTempPassword() { const c = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let o = ''; const a = new Uint32Array(8); (window.crypto || window.msCrypto).getRandomValues(a); a.forEach(n => { o += c[n % c.length]; }); return o; }
 async function resetUserPassword(docId, data) {
-  const typed = prompt('Reset password for "' + data.username + '" (' + roleLabel(data.role === undefined ? 'admin' : data.role) + ').\n\nType the new password (at least 6 characters).\nThe old password stops working immediately and they are signed out. They can change it themselves after signing in.');
+  const typed = await pwAsk('Reset password for ' + data.username + ' (' + roleLabel(data.role === undefined ? 'admin' : data.role) + ')', 'Type the new password (at least 6 characters). The old password stops working at once. Tell them privately; they can change it themselves after signing in.');
   if (typed === null) return;
   const pw = typed.trim();
-  if (pw.length < 6) { alert('The password must be at least 6 characters. Nothing was changed.'); return; }
   manageStatusMsg.textContent = 'Resetting…';
   try {
     let ver = 0;
@@ -3211,9 +3210,12 @@ async function dbOverviewHtml() {
     if (g) sx[k][g]++;
   });
   const mf = k => 'Men ' + sx[k].M + ' · Women ' + sx[k].F;
-  const savings = sumField(contrib, 'amount'), shares = sumField(members, 'shareCapital'), regFees = sumField(members, 'registrationFee');
+  const savings = sumField(contrib.filter(isSavRec), 'amount'), allContrib = sumField(contrib, 'amount'), shares = sumField(members, 'shareCapital'), regFees = sumField(members, 'registrationFee');
   const issued = sumField(loans, 'loanAmount'), repaid = sumField(repay, 'amountRepaid'), finesT = sumField(fines, 'amount');
   const spent = sumField(exp, 'amount'), otherT = sumField(other, 'amount');
+  let fullShare = 0, fullCnt = 0, partShare = 0, partCnt = 0;
+  active.forEach(m => { const cp = parseFloat(m.shareCapital) || 0; if (cp >= 1000) { fullShare += cp; fullCnt++; } else if (cp > 0) { partShare += cp; partCnt++; } });
+  const fromShares = Math.min(otherT, shares), fromSavings = Math.max(0, otherT - shares);
   const net = shares + savings - otherT - outstanding;
   const pq = await computePortfolioQuality();
   const ew = await computeEarlyWarning();
@@ -3230,8 +3232,9 @@ async function dbOverviewHtml() {
     dbCard('Women', women, active.length ? Math.round(women / active.length * 100) + '% of members' : '', '', '♀') +
     (active.length - men - women > 0 ? dbCard('Sex not recorded', active.length - men - women, 'Edit in Member Register', 'bad', '?') : '') + '</div>' +
     '<h2 class="db-h gold">Savings &amp; capital</h2><div class="db-grid">' +
-    dbCard('Savings', dbKes(savings), 'Total contributions', '', '💰') +
-    dbCard('Share capital', dbKes(shares), 'All members', '', '🏦') +
+    dbCard('Savings', dbKes(savings), 'Total Savings', '', '💰') +
+    dbCard('Total share capital', dbKes(fullShare), fullCnt + ' of ' + active.length + ' members fully paid (KES 1,000 each)', '', '🏦') +
+    dbCard('Partly paid shares', dbKes(partShare), partCnt + ' member' + (partCnt === 1 ? '' : 's') + ' still completing KES 1,000', '', '◐') +
     dbCard('Registration fees', dbKes(regFees), 'Spent ' + dbKes(spent) + ' · left ' + dbKes(regFees - spent), '', '🧾') +
     dbCard('Net contribution', dbKes(net), 'Shares + savings − other expenses − loans', '', '📈') +
     dbCard('M-Pesa to post', inbox.length, dbKes(sumField(inbox, 'amount')) + ' waiting in the inbox', inbox.length ? 'bad' : 'good', '📲') + '</div>' +
@@ -3243,13 +3246,13 @@ async function dbOverviewHtml() {
     dbCard('Delinquency ratio', pq.delRatio + '%', 'All loans with a missed repayment', pq.delinquent > 0.5 ? 'bad' : 'good') +
     dbCard('NPL ratio (>90 days)', pq.nplRatio + '%', 'SASRA limit ' + SASRA_NPL_LIMIT + '%', pq.nplRatio > SASRA_NPL_LIMIT ? 'bad' : 'good') +
     dbCard('Watch loans (1–30 d)', pq.watch.length, dbKes(pq.watchAmt) + ' to follow up now', pq.watch.length ? 'bad' : 'good') + '</div>' +
-    '<h2 class="db-h green">Safe lending capacity</h2><div class="db-grid">' + dbCard('Safe to lend now', fmtKES(lc.pool), 'Cash above 15% reserve', lc.pool <= 0 ? 'bad' : lc.binding ? 'warn' : 'good', '') + dbCard('Eligible members', lc.eligible, 'Tap to see the list', '', '').replace('<div class="db-c ', '<div onclick="lcOpenList()" style="cursor:pointer" class="db-c ') + dbCard('What they could borrow', fmtKES(lc.demand), 'Total of limits', '', '') + dbCard('Fair cap per member', lc.binding ? fmtKES(lc.ceiling) : 'None needed', lc.binding ? 'Cash is less than demand' : 'Cash covers all limits', lc.binding ? 'warn' : 'good', '') + '</div>' +
+    '<h2 class="db-h green">Safe lending capacity</h2><div class="db-grid">' + dbCard('Safe to lend now', fmtKES(lc.pool), 'Savings left after the 15% reserve', lc.pool <= 0 ? 'bad' : lc.binding ? 'warn' : 'good', '') + dbCard('Eligible members', lc.eligible, 'Tap to see the list', '', '').replace('<div class="db-c ', '<div onclick="lcOpenList()" style="cursor:pointer" class="db-c ') + dbCard('What they could borrow', fmtKES(Math.min(lc.demand, lc.pool)), 'From savings left after the 15% reserve. Limits total ' + fmtKES(lc.demand), '', '') + dbCard('Fair cap per member', lc.binding ? fmtKES(lc.ceiling) : 'None needed', lc.binding ? 'Cash is less than demand' : 'Cash covers all limits', lc.binding ? 'warn' : 'good', '') + '</div>' +
     '<h2 class="db-h red">Early warning — liquidity &amp; member trust</h2><div class="db-grid">' + ew.ind.map(i => dbCard(i.label, i.value, i.sub, i.level)).join('') + '</div>' +
     (ew.actions.length ? '<div class="db-note"><b>What to do now</b><br>' + ew.actions.map(x => '• ' + escHtml(x)).join('<br>') + '</div>' : '<div class="db-note" style="background:#d9f2df;color:#1b5e20;">✔ No early-warning signs right now.</div>') +
     '<h2 class="db-h gold">Spending</h2><div class="db-grid">' +
     dbCard('Expenditure', dbKes(spent), 'From registration fees', '') +
-    dbCard('Other expenses', dbKes(otherT), 'From shares + savings', '') +
-    dbCard('Fund balance', dbKes(savings + repaid + finesT - issued - spent - otherT), 'Cash position', '') + '</div>' +
+    dbCard('Other expenses', dbKes(otherT), 'From share capital ' + dbKes(fromShares) + (fromSavings > 0 ? ' · from savings ' + dbKes(fromSavings) : ' · none from savings yet'), '') +
+    dbCard('Fund balance', dbKes(allContrib + repaid + finesT - issued - spent - otherT), 'Cash position', '') + '</div>' +
     '<h2 class="db-h gold">Inclusion Grant</h2><div class="db-grid">' +
     dbCard('Grant budget', dbKes(grant.totalRequest), 'Own 10%: ' + dbKes(grant.totalOwn), '') +
     dbCard('Spent', dbKes(grant.totalSpent), grant.totalRequest ? Math.round(grant.totalSpent / grant.totalRequest * 100) + '% used' : '', '') +
@@ -3604,7 +3607,7 @@ async function monthlyPack(month) {
   const [members, contrib, loans, repay, fines, exp, oth, pq, lc, rs, ew] = await Promise.all([C('member-register'), C('contribution-record'), C('loan-issued'), C('loan-repayment'), C('fines-penalties'), C('expenditure'), C('other-expenses'), computePortfolioQuality(), computeLendingCapacity(), recSummary(), computeEarlyWarning()]);
   const inM = a => a.filter(r => mcMonthKey(r.date) === month);
   const k = n => fmtKES(Number(n) || 0), td = 'style="border:1px solid #999;padding:4px 6px;"', th = 'style="border:1px solid #999;padding:4px 6px;background:#e8f0e8;text-align:left;"';
-  const sav = inM(contrib).filter(c => c.contributionType !== 'Share'), shr = inM(contrib).filter(c => c.contributionType === 'Share');
+  const sav = inM(contrib).filter(c => isSavRec(c)), shr = inM(contrib).filter(c => c.contributionType === 'Share');
   const newM = members.filter(m => mcMonthKey(m.dateJoined) === month);
   const row = (a, b) => '<tr><td ' + td + '>' + a + '</td><td ' + td + ' align="right">' + b + '</td></tr>';
   const income = toolsSum(sav, 'amount') + toolsSum(shr, 'amount') + toolsSum(inM(repay), 'amountRepaid') + toolsSum(inM(fines), 'amount') + toolsSum(newM, 'registrationFee') + toolsSum(newM, 'shareCapital');
@@ -3628,7 +3631,7 @@ async function remCollect(kind, ahead) {
   const mem = n => members.find(m => m.memberName === n) || {};
   if (kind === 'saving') {
     const mon = today.slice(0, 7);
-    members.filter(m => !m.status || m.status === 'Active').forEach(m => { const got = contrib.some(c => c.memberName === m.memberName && c.contributionType !== 'Share' && String(c.date || '').slice(0, 7) === mon); if (!got) out.push({ name: m.memberName, phone: m.contact, kind, detail: 'No saving recorded in ' + mon }); });
+    members.filter(m => !m.status || m.status === 'Active').forEach(m => { const got = contrib.some(c => c.memberName === m.memberName && isSavRec(c) && String(c.date || '').slice(0, 7) === mon); if (!got) out.push({ name: m.memberName, phone: m.contact, kind, detail: 'No saving recorded in ' + mon }); });
     return out.sort((a, b) => a.name.localeCompare(b.name));
   }
   for (const l of loans) {
@@ -3898,7 +3901,7 @@ function mcRegularity(contribs, from, to) {
 async function computeMemberCredit(memberName) {
   const [contrib, loans, repay] = await Promise.all([
     getCollectionEntries('tablebanking', 'contribution-record'), getCollectionEntriesWithId('tablebanking', 'loan-issued'), getCollectionEntriesWithId('tablebanking', 'loan-repayment')]);
-  const mine = contrib.filter(c => c.memberName === memberName && c.contributionType !== 'Share').sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const mine = contrib.filter(c => c.memberName === memberName && isSavRec(c)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
   const today = new Date().toISOString().slice(0, 10);
   const rows = [];
   let worstLate = 0, currentLate = 0, repaidLoans = 0;
@@ -3930,7 +3933,7 @@ async function appraisalAssess(p) {
   const [contrib, loans, guar, members] = await Promise.all([
     getCollectionEntries('tablebanking', 'contribution-record'), getCollectionEntriesWithId('tablebanking', 'loan-issued'),
     getCollectionEntriesWithId('tablebanking', 'guarantor-register'), getCollectionEntries('tablebanking', 'member-register')]);
-  const savingsOf = n => contrib.filter(c => c.memberName === n && c.contributionType !== 'Share').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
+  const savingsOf = n => contrib.filter(c => c.memberName === n && isSavRec(c)).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
   const first = contrib.filter(c => c.memberName === p.memberName && c.date).map(c => c.date).sort()[0];
   const months = first ? mcMonthsBetween(first, new Date().toISOString().slice(0, 10)) : 0;
   const balances = {};
@@ -4036,7 +4039,7 @@ async function computeEarlyWarning() {
   const cash = savings + shares + regFees + sum(repay, 'amountRepaid') + sum(fines, 'amount') - sum(loans, 'loanAmount') - sum(exp, 'amount') - sum(other, 'amount');
   const liqPct = deposits > 0 ? Math.round(cash / deposits * 1000) / 10 : 0;
   const ltd = deposits > 0 ? Math.round(pq.total / deposits * 1000) / 10 : 0;
-  const savOnly = sum(contrib.filter(r => r.contributionType !== 'Share'), 'amount'), reserve = savOnly * 0.15, outOnLoan = Math.max(0, sum(loans, 'loanAmount') - sum(repay, 'amountRepaid')), headroom = savOnly - reserve - outOnLoan; // lending is from members' savings only: not shares, fees, fines or interest
+  const savOnly = sum(contrib.filter(r => isSavRec(r)), 'amount'), reserve = savOnly * 0.15, outOnLoan = Math.max(0, sum(loans, 'loanAmount') - sum(repay, 'amountRepaid')), headroom = savOnly - reserve - outOnLoan; // lending is from members' savings only: not shares, fees, fines or interest
   const months = []; const dt = new Date(); dt.setDate(1);
   for (let i = 0; i < 4; i++) { const x = new Date(dt.getFullYear(), dt.getMonth() - i, 1); months.unshift(x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0')); }
   const inM = m => sum(contrib.filter(r => mcMonthKey(r.date) === m), 'amount') + sum(repay.filter(r => mcMonthKey(r.date) === m), 'amountRepaid') + sum(fines.filter(r => mcMonthKey(r.date) === m), 'amount');
@@ -4045,7 +4048,7 @@ async function computeEarlyWarning() {
   const negRun = net.slice(-2).every(x => x < 0);
   const active = members.filter(m => !m.status || m.status === 'Active');
   const gone = members.length - active.length;
-  const saverIn = m => new Set(contrib.filter(r => mcMonthKey(r.date) === m && r.contributionType !== 'Share').map(r => r.memberName)).size;
+  const saverIn = m => new Set(contrib.filter(r => mcMonthKey(r.date) === m && isSavRec(r)).map(r => r.memberName)).size;
   const cur = months[3], prev = months[2];
   const part = active.length ? Math.round(saverIn(cur) / active.length * 100) : 0, partPrev = active.length ? Math.round(saverIn(prev) / active.length * 100) : 0;
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 90); const cut = cutoff.toISOString().slice(0, 10);
@@ -4182,7 +4185,7 @@ async function recLetterContext(c) {
   const mem = members.find(m => m.memberName === c.memberName) || {};
   const gl = guar.filter(g => g.loanId === c.loanId).map(g => {
     const m = members.find(x => x.memberName === g.guarantorMemberName) || {};
-    const sv = all.filter(x => x.memberName === g.guarantorMemberName && x.contributionType !== 'Share').reduce((a, x) => a + (parseFloat(x.amount) || 0), 0);
+    const sv = all.filter(x => x.memberName === g.guarantorMemberName && isSavRec(x)).reduce((a, x) => a + (parseFloat(x.amount) || 0), 0);
     return { name: g.guarantorMemberName, idNo: m.idNo || '', contact: m.contact || '', amount: parseFloat(g.amountGuaranteed) || 0, savings: sv };
   });
   return { st, mem, gl };
@@ -4269,7 +4272,7 @@ async function computeLendingCapacity() {
   reqsAll.forEach(r => { if (!LA_OPEN.includes(r.status || 'New')) return; if (loans.some(l => l.memberName === r.memberName && l.date >= r.date)) return; try { (JSON.parse(r.formJson || '{}').guarantors || []).forEach(g => { pledgedBy[g.name] = (pledgedBy[g.name] || 0) + (parseFloat(g.amount) || 0); }); } catch (e) {} });
   const rows = [], excluded = [], out = { notEligible: 0, short: 0, arrears: 0, inactive: 0 };
   members.filter(m => !m.status || m.status === 'Active').forEach(m => {
-    const mine = contrib.filter(c => c.memberName === m.memberName && c.contributionType !== 'Share' && c.date);
+    const mine = contrib.filter(c => c.memberName === m.memberName && isSavRec(c) && c.date);
     const sv = mine.reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
     const st = saveStreak(mine, today);
     if (!st.qualified) { out.short++; excluded.push({ name: m.memberName, savings: sv, why: lfStreakMsg(st) }); return; }
@@ -4284,7 +4287,7 @@ async function computeLendingCapacity() {
   sorted.forEach((r, i) => { const share = remaining / (sorted.length - i); r.cap = Math.max(0, Math.min(r.max, share)); remaining -= r.cap; });
   let capPct = 40; try { const sd = await db.collection(storageKey('tablebanking', 'lending-settings')).doc('main').get(); if (sd.exists && parseFloat((sd.data() || {}).capPct) > 0) capPct = Math.min(100, parseFloat(sd.data().capPct)); } catch (e) {}
   const capAmt = Math.round(pool * capPct / 100);
-  const firstSave = {}; contrib.forEach(c => { if (c.contributionType !== 'Share' && c.date && (!firstSave[c.memberName] || c.date < firstSave[c.memberName])) firstSave[c.memberName] = c.date; });
+  const firstSave = {}; contrib.forEach(c => { if (isSavRec(c) && c.date && (!firstSave[c.memberName] || c.date < firstSave[c.memberName])) firstSave[c.memberName] = c.date; });
   const open = reqsAll.filter(r => LA_OPEN.includes(r.status || 'New') && !loans.some(l => l.memberName === r.memberName && l.date >= r.date) && rows.some(x => x.name === r.memberName))
     .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (firstSave[a.memberName] || '9').localeCompare(firstSave[b.memberName] || '9') || (a.memberName || '').localeCompare(b.memberName || ''));
   let left = pool; const queue = open.map((r, i) => { const row = rows.find(x => x.name === r.memberName), ask = parseFloat(r.amountRequested) || row.max; const allowed = Math.max(0, Math.min(ask, row.max, capAmt, left)); left -= allowed; return { name: r.memberName, date: r.date, ask, allowed, pos: i + 1, status: allowed >= ask - 0.5 ? 'Funds available' : allowed > 0 ? 'Part available' : 'Waiting for repayments' }; });
@@ -4302,7 +4305,7 @@ async function renderLendingCapacity(container) {
   card(fmtKES(c.pool), 'Safe to lend now', 'Savings ' + fmtKES(c.savOnly) + ' less 15% reserve and ' + fmtKES(c.outOnLoan) + ' out on loan', col);
   card(c.eligible, 'Eligible members', '6+ months saving, no arrears, room under ' + c.MULT + '× savings — <b>tap to see the list</b>', '#1b5e20');
   { const last = container.lastChild; last.style.cursor = 'pointer'; last.onclick = lcOpenList; }
-  card(fmtKES(c.demand), 'What they could borrow', 'Total of every eligible member\'s limit', '#555');
+  card(fmtKES(Math.min(c.demand, c.pool)), 'What they could borrow', 'From savings left after the 15% reserve. Eligible limits total ' + fmtKES(c.demand), '#555');
   card(c.binding ? fmtKES(c.ceiling) : 'No limit needed', 'Fair cap per member', c.binding ? 'Cash is less than demand: share it so no one takes it all' : 'Cash covers every eligible member\'s limit', col);
   const n = c.out; const box = document.createElement('div');
   box.style.cssText = 'grid-column:1/-1;border-radius:8px;padding:10px;font-size:13px;background:#f4f9f4;border:1px solid #bcd9bc;';
@@ -4329,7 +4332,7 @@ async function lcOpenList() {
     '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;"><thead><tr>' + ['#', 'Member', 'Savings', 'Owes now', 'Limit (' + c.MULT + '× savings)', 'Safe to borrow'].map(x => '<th ' + th + '>' + x + '</th>').join('') + '</tr></thead><tbody>' +
     (rows.length ? rows.map((r, i) => '<tr>' + el('', i + 1) + el('', escHtml(r.name)) + el('', k(r.savings)) + el('', k(r.owed)) + el('', k(r.max)) + el('', '<b style="color:#1b5e20">' + k(r.cap) + '</b>') + '</tr>').join('') : '<tr><td colspan="6" ' + td + '>No member is eligible yet.</td></tr>') +
     '</tbody></table></div>';
-  if (rows.length) h += '<div style="text-align:right;font-weight:700;font-size:13px;margin-top:4px;">Total they could borrow: ' + k(c.demand) + ' · Total safe to give out: ' + k(c.allocated) + '</div>';
+  if (rows.length) h += '<div style="text-align:right;font-weight:700;font-size:13px;margin-top:4px;">Total they could borrow: ' + k(Math.min(c.demand, c.pool)) + ' · Total safe to give out: ' + k(c.allocated) + '</div>';
   h += '<h4 style="margin:14px 0 4px;font-size:13px;color:#8a4b00;">Not eligible now (' + c.excluded.length + ')</h4><div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;"><thead><tr>' + ['Member', 'Savings', 'Reason'].map(x => '<th ' + th + '>' + x + '</th>').join('') + '</tr></thead><tbody>' +
     (c.excluded.length ? c.excluded.map(r => '<tr>' + el('', escHtml(r.name)) + el('', k(r.savings)) + el('', escHtml(r.why)) + '</tr>').join('') : '<tr><td colspan="3" ' + td + '>None.</td></tr>') + '</tbody></table></div>';
   const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:10px;';
@@ -5084,7 +5087,7 @@ async function mpCollect(member) {
     issued += parseFloat(l.loanAmount) || 0; paid += repaid; outstanding += bal;
     loanRows.push({ l, ch, repaid, bal, dq });
   }
-  const savings = myContrib.filter(c => c.contributionType !== 'Share').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
+  const savings = myContrib.filter(c => isSavRec(c)).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
   const shareContrib = myContrib.filter(c => c.contributionType === 'Share').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
   const fee = parseFloat(member.registrationFee) || 0, cap = parseFloat(member.shareCapital) || 0;
   const guaranteed = guar.filter(g => g.guarantorMemberName === n);
@@ -5108,7 +5111,7 @@ function mpHtml(d, forPrint) {
     '<table style="font-size:13px;margin-top:6px;">' + row('Sex', m.sex) + row('ID number', m.idNo) + row('KRA PIN', m.kraPin) + row('Phone', m.contact) + row('CIG / Group', m.cigName) + row('Date joined', m.dateJoined) + row('Payment mode', m.paymentMode) + '</table></div></div>' +
     h2('Next of kin') + '<table style="font-size:13px;">' + row('Name', m.nokName) + row('Relationship', m.nokRelationship) + row('Phone', m.nokPhone) + row('ID number', m.nokIdNo) + '</table>' +
     h2('Summary') + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;">' +
-    card('Registration fee', k(d.fee)) + card('Share capital', k(d.cap)) + card('Savings', k(d.savings + d.shareContrib)) + card('Loans taken', k(d.issued)) +
+    card('Registration fee', k(d.fee)) + card('Share capital', k(d.cap)) + card('Savings', k(d.savings)) + card('Loans taken', k(d.issued)) +
     card('Loans paid', k(d.paid)) + card('Loans outstanding', k(d.outstanding), d.outstanding > 0.5) + card('Net contribution', k(d.net), d.net < 0) + '</div>' +
     h2('Loans — paid and outstanding') + tbl(['Date', 'Product', 'Loan', 'Total to repay', 'Paid', 'Outstanding', 'Due', 'Status'],
       d.loanRows.map(r => [escHtml(r.l.date), escHtml(r.l.loanProduct), k(r.l.loanAmount), k(r.ch ? r.ch.totalRepayable : r.l.loanAmount), k(r.repaid), '<b' + (r.bal > 0.5 ? ' style="color:#c62828"' : '') + '>' + k(r.bal) + '</b>', escHtml(r.l.dueDate),
@@ -5289,7 +5292,7 @@ async function lfCtx() {
   for (const l of loans) { if (l.status === 'Written Off') continue; const ch = await computeLoanBalanceChain(l.__id); if (!ch || ch.currentBalance <= 0.5) continue; open.add(l.__id); bal[l.memberName] = (bal[l.memberName] || 0) + ch.currentBalance; const dq = loanDq(l, ch); if (dq && dq.days > 0) late.add(l.memberName); }
   const info = {};
   members.forEach(m => {
-    const mine = contrib.filter(c => c.memberName === m.memberName), sv = mine.filter(c => c.contributionType !== 'Share').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
+    const mine = contrib.filter(c => c.memberName === m.memberName), sv = mine.filter(c => isSavRec(c)).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
     const first = mine.filter(c => c.date).map(c => c.date).sort()[0], mf = files.filter(f => f.memberId === m.__id);
     const missing = LF_PROFILE_FIELDS.filter(x => !String(m[x[0]] || '').trim()).map(x => x[1]).concat(LF_PROFILE_DOCS.filter(x => !mf.some(f => f.kind === x[0])).map(x => x[1]));
     info[m.memberName] = { m, savings: sv, share: (parseFloat(m.shareCapital) || 0) + mine.filter(c => c.contributionType === 'Share').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0), months: first ? mcMonthsBetween(first, today) : 0, streak: saveStreak(mine, today), owed: bal[m.memberName] || 0, late: late.has(m.memberName), pledged: 0, active: !m.status || m.status === 'Active', missing, complete: !missing.length };
@@ -5857,7 +5860,7 @@ async function cmtRender() {
     btn.disabled = true;
     try {
       if (uid) { const u = users.find(x => x.__id === uid); if (!confirm('Assign account "' + u.username + '" to ' + linked + ' as ' + roleLabel(role) + '?')) { btn.disabled = false; return; } await db.collection(USERS_COLLECTION).doc(uid).update({ role, linkedMemberName: linked }); auditLog('account updated', 'app_users', uid, u.username + ' · ' + role + ' · ' + linked); alert(linked + ' is now assigned to account "' + u.username + '" as ' + roleLabel(role) + '.'); }
-      else { const un = cmtUsername(p, users); const name = prompt('Username for ' + linked + ':', un); if (!name) { btn.disabled = false; return; } if (users.some(x => x.username === name.trim())) { alert('That username already exists.'); btn.disabled = false; return; } const typedPw = prompt('Password for ' + name.trim() + ' (at least 6 characters). Leave blank to generate one:', ''); if (typedPw === null) { btn.disabled = false; return; } if (typedPw.trim() && typedPw.trim().length < 6) { alert('The password must be at least 6 characters.'); btn.disabled = false; return; } const pw = await cmtCreate(name.trim(), role, linked, typedPw.trim()); alert('Login created for ' + linked + '\n\nUsername: ' + name.trim() + '\nPassword: ' + pw + '\nRole: ' + roleLabel(role) + '\n\nGive it to them privately.'); }
+      else { const un = cmtUsername(p, users); const name = prompt('Username for ' + linked + ':', un); if (!name) { btn.disabled = false; return; } if (users.some(x => x.username === name.trim())) { alert('That username already exists.'); btn.disabled = false; return; } const typedPw = await pwAsk('Password for ' + name.trim(), 'Type a password (at least 6 characters) for this new login.'); if (typedPw === null) { btn.disabled = false; return; } const pw = await cmtCreate(name.trim(), role, linked, typedPw); alert('Login created for ' + linked + '\n\nUsername: ' + name.trim() + '\nPassword: ' + pw + '\nRole: ' + roleLabel(role) + '\n\nGive it to them privately.'); }
     } catch (e) { alert('Could not save. Check your internet connection.'); }
     renderUsersTable();
   });
@@ -5910,6 +5913,18 @@ function ssBarSetup() {
 setInterval(ssBarSetup, 1500); document.addEventListener('DOMContentLoaded', ssBarSetup);
 // ================= END STATEMENT SEARCH =================
 
+function isSavRec(r) { const t = String((r && r.contributionType) || '').toLowerCase(); return !t || t.indexOf('saving') === 0; }
+function pwAsk(title, note) {
+  return new Promise(res => {
+    const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10200;display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.innerHTML = '<div style="background:#fff;color:#111;border-radius:14px;padding:16px;width:100%;max-width:420px"><div style="font-weight:800;font-size:16px;margin-bottom:6px"></div><div style="font-size:13px;color:#555;margin-bottom:8px"></div><input id="pwaI" type="text" autocomplete="off" autocapitalize="off" placeholder="Type the new password" style="width:100%;padding:12px;font-size:16px;border:2px solid #1b5e20;border-radius:8px;box-sizing:border-box"><div id="pwaM" style="color:#b71c1c;font-size:13px;min-height:18px;margin-top:4px"></div><div style="display:flex;gap:8px;margin-top:8px"><button type="button" id="pwaC" style="flex:1;padding:11px;border:none;border-radius:8px;background:#9e9e9e;color:#fff;font-weight:700">Cancel</button><button type="button" id="pwaS" style="flex:1;padding:11px;border:none;border-radius:8px;background:#1b5e20;color:#fff;font-weight:800">Save password</button></div></div>';
+    ov.firstChild.children[0].textContent = title; ov.firstChild.children[1].textContent = note; document.body.appendChild(ov);
+    const i = ov.querySelector('#pwaI'); setTimeout(() => i.focus(), 100);
+    ov.querySelector('#pwaC').onclick = () => { ov.remove(); res(null); };
+    const go = () => { const v = i.value.trim(); if (v.length < 6) { ov.querySelector('#pwaM').textContent = 'The password must be at least 6 characters.'; return; } ov.remove(); res(v); };
+    ov.querySelector('#pwaS').onclick = go; i.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  });
+}
 // ===================== LOAN APPROVALS: CREDIT COMMITTEE -> CHAIRPERSON =====================
 var LA_OPEN = ['New', 'Seen by Credit Committee', 'Guarantors confirmed', 'Approved by Credit Committee', 'Approved by Chairperson'];
 function laStage(r) { const s = r.status || 'New'; if (['New', 'Seen by Credit Committee', 'Guarantors confirmed'].includes(s)) return 'cc'; if (s === 'Approved by Credit Committee') return 'chair'; return 'done'; }
@@ -6001,6 +6016,34 @@ function laNavSetup() {
   }
 }
 setInterval(() => { laNavSetup(); }, 2000); setInterval(laBadge, 45000);
+// ---- Issuing a loan: use the approved amount, and require approval ----
+async function laApprovedFor(member) {
+  const [reqs, loans] = await Promise.all([getCollectionEntriesWithId('tablebanking', 'loan-request'), getCollectionEntries('tablebanking', 'loan-issued')]);
+  const mine = reqs.filter(r => r.memberName === member && r.status !== 'Cancelled' && !loans.some(l => l.memberName === member && l.date >= r.date)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  return { ok: mine.find(r => r.status === 'Approved by Chairperson') || null, pending: mine.find(r => ['New', 'Guarantors confirmed', 'Seen by Credit Committee', 'Approved by Credit Committee'].includes(r.status || 'New')) || null };
+}
+formFields.addEventListener('change', async (e) => {
+  if (currentCategory !== 'tablebanking' || currentRecord !== 'loan-issued' || editingRowId || !e.target || e.target.id !== 'field_memberName' || !e.target.value) return;
+  try {
+    const a = await laApprovedFor(e.target.value);
+    const set = (k, v) => { const el = document.getElementById('field_' + k); if (el && v !== undefined && v !== '') { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); } };
+    if (a.ok) { set('loanProduct', a.ok.loanProduct); set('loanAmount', a.ok.approvedAmount); set('termMonths', a.ok.termMonths); statusMsg.textContent = 'Approved by the Chairperson: amount KES ' + a.ok.approvedAmount + ' filled in.'; }
+    else statusMsg.textContent = a.pending ? 'This member has a loan request that is not fully approved yet (' + (a.pending.status || 'New') + '). It cannot be issued yet.' : 'No approved loan request found for this member.';
+  } catch (er) { console.warn(er); }
+});
+entryForm.addEventListener('submit', async (e) => {
+  if (currentCategory !== 'tablebanking' || currentRecord !== 'loan-issued' || editingRowId || window.__laOk) return;
+  e.stopImmediatePropagation(); e.preventDefault();
+  const se = getSession(), name = (document.getElementById('field_memberName') || {}).value, amt = parseFloat((document.getElementById('field_loanAmount') || {}).value) || 0;
+  let pass = false;
+  try {
+    const a = await laApprovedFor(name), boss = se && ['admin', 'chairperson'].includes(se.role);
+    if (a.ok) { const lim = parseFloat(a.ok.approvedAmount) || 0; if (amt <= lim + 0.5) pass = true; else if (boss) pass = confirm('The approved amount is KES ' + lim + ' but you entered KES ' + amt + '. Issue this larger amount anyway?'); else alert('The approved amount for ' + name + ' is KES ' + lim + '. You cannot issue more than that.'); }
+    else if (boss) pass = confirm('There is no loan request approved by the Chairperson for ' + (name || 'this member') + '. Issue this loan anyway?');
+    else alert('This loan cannot be issued yet: ' + (a.pending ? 'the request is still "' + (a.pending.status || 'New') + '".' : 'there is no approved loan request for this member.') + ' It needs Credit Committee and Chairperson approval first.');
+  } catch (er) { alert('Could not check the approval. Check your internet connection.'); }
+  if (pass) { window.__laOk = true; try { entryForm.requestSubmit(); } finally { setTimeout(() => { window.__laOk = false; }, 400); } }
+}, true);
 // ================= END LOAN APPROVALS =================
 
 // ===================== RECORDS TABS (admin / chairperson / official) =====================
@@ -6710,7 +6753,7 @@ async function computeShareOutData() {
     getCollectionEntriesWithId('tablebanking', 'loan-issued'),
   ]);
 
-  const savingsByMember = groupSumByMember(contributions.filter(c => c.contributionType !== 'Share'), 'amount');
+  const savingsByMember = groupSumByMember(contributions.filter(c => isSavRec(c)), 'amount');
   const shareContribByMember = groupSumByMember(contributions.filter(c => c.contributionType === 'Share'), 'amount');
 
   const outstandingLoanByMember = {};
@@ -6949,13 +6992,13 @@ function mhMonthKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1)
 function mhMonths(contribs) {
   const now = new Date(), out = [];
   for (let i = 11; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); out.push({ key: mhMonthKey(d), lbl: d.toLocaleString(mhLang === 'sw' ? 'sw' : 'en', { month: 'short' }), amt: 0 }); }
-  contribs.filter(c => c.contributionType !== 'Share').forEach(c => { const k = String(c.date || '').slice(0, 7), m = out.find(x => x.key === k); if (m) m.amt += parseFloat(c.amount) || 0; });
+  contribs.filter(c => isSavRec(c)).forEach(c => { const k = String(c.date || '').slice(0, 7), m = out.find(x => x.key === k); if (m) m.amt += parseFloat(c.amount) || 0; });
   return out;
 }
 function mhShort(n) { return n >= 1000 ? (Math.round(n / 100) / 10) + 'k' : String(Math.round(n)); }
 function mhStreak(contribs) {
   const ok = new Set(), by = {};
-  contribs.filter(c => c.contributionType !== 'Share').forEach(c => { const k = String(c.date || '').slice(0, 7); if (k) by[k] = (by[k] || 0) + (parseFloat(c.amount) || 0); });
+  contribs.filter(c => isSavRec(c)).forEach(c => { const k = String(c.date || '').slice(0, 7); if (k) by[k] = (by[k] || 0) + (parseFloat(c.amount) || 0); });
   Object.keys(by).forEach(k => { if (by[k] >= PORTAL_GOAL.monthMin) ok.add(k); });
   let d = new Date(); d = new Date(d.getFullYear(), d.getMonth(), 1);
   if (!ok.has(mhMonthKey(d))) d = new Date(d.getFullYear(), d.getMonth() - 1, 1);
@@ -6989,7 +7032,7 @@ async function memberHomeRender(memberName) {
   const member = members.find(x => x.memberName === memberName);
   if (!member) { [summary, eb, contribPanel, loansPanel].forEach(n => { if (n) container.appendChild(n); }); if (titlePanel) titlePanel.style.display = ''; return; }
   const d = await mpCollect(member), today = new Date().toISOString().slice(0, 10), k = v => fmtKES(Number(v) || 0);
-  const goal = PORTAL_GOAL.savings + PORTAL_GOAL.shares, have = d.savings + d.shareContrib + d.cap, pct = Math.round(have / goal * 100), left = goal - have;
+  const goal = PORTAL_GOAL.savings, have = d.savings, pct = Math.round(have / goal * 100), left = goal - have;
   const running = d.loanRows.filter(r => r.bal > 0.5 && r.ch);
   let overdue = false; running.forEach(r => { if (r.dq || schedFor(r.l, r.ch.totalRepayable, r.repaid).some(x => x.status === 'Overdue')) overdue = true; });
   const active = !member.status || member.status === 'Active', good = active && !overdue;
@@ -7023,9 +7066,9 @@ async function memberHomeRender(memberName) {
   if (lm && recDaysFrom(lm.date, today) <= 90) home += mhCard(mhTitle('📝', t('LAST MEETING')) + '<div style="font-size:15px;font-weight:800;">' + escHtml(lm.title || 'SACCO meeting') + ' <span style="font-weight:400;font-size:12px;color:#777;">' + escHtml(lm.date) + '</span></div>' + (lm.agenda ? '<div style="font-size:12.5px;color:#333;white-space:pre-wrap;margin-top:4px;">' + escHtml(String(lm.agenda).slice(0, 400)) + '</div>' : '') + (lm.notes ? '<div style="font-size:12.5px;color:#555;margin-top:4px;">' + escHtml(String(lm.notes).slice(0, 250)) + '</div>' : '') + (lm.minutes ? '<details style="margin-top:8px;"><summary style="cursor:pointer;font-weight:800;color:#fff;background:#7b1fa2;font-size:14px;padding:11px 14px;border-radius:12px;text-align:center;list-style:none;box-shadow:0 2px 5px rgba(0,0,0,.2);">' + (mhLang === 'sw' ? 'Soma muhtasari kamili wa mkutano' : 'Read the full minutes') + '</summary><div style="font-size:12.5px;color:#222;white-space:pre-wrap;max-height:60vh;overflow:auto;border-top:1px solid #eee;padding-top:6px;">' + escHtml(String(lm.minutes)) + '</div></details>' : ''), 'border-left:6px solid #7b1fa2;');
   // ================= SAVINGS =================
   const months = mhMonths(d.myContrib), mx = Math.max(1, ...months.map(m => m.amt)), kept = months.filter(m => m.amt >= PORTAL_GOAL.monthMin).length;
-  const firstSave = d.myContrib.filter(c => c.contributionType !== 'Share' && c.date).map(c => c.date).sort()[0];
+  const firstSave = d.myContrib.filter(c => isSavRec(c) && c.date).map(c => c.date).sort()[0];
   const since = firstSave ? Math.max(1, Math.min(6, mcMonthsBetween(firstSave, today) + 1)) : 0, cutoff = schedAddMonths(today, -6);
-  const recentSave = d.myContrib.filter(c => c.contributionType !== 'Share' && c.date >= cutoff).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0), avg = since ? Math.round(recentSave / since) : 0;
+  const recentSave = d.myContrib.filter(c => isSavRec(c) && c.date >= cutoff).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0), avg = since ? Math.round(recentSave / since) : 0;
   const nowD = new Date(), monthsLeftYear = 12 - nowD.getMonth();
   let plan = '';
   if (left <= 0) plan = '🎉 ' + t('Goal reached — well done!');
@@ -7034,7 +7077,7 @@ async function memberHomeRender(memberName) {
     plan = (eta ? (mhLang === 'sw' ? 'Ukiendelea kuweka ' + k(avg) + ' kwa mwezi, utafikia lengo ' + eta.toLocaleString('sw', { month: 'long', year: 'numeric' }) + '.' : 'Saving about <b>' + k(avg) + '</b> a month, you reach your goal in <b>' + eta.toLocaleString('en', { month: 'long', year: 'numeric' }) + '</b>.') : (mhLang === 'sw' ? 'Anza kuweka akiba kila mwezi ili ufikie lengo.' : 'Start saving every month to reach your goal.')) +
       '<br>' + (mhLang === 'sw' ? 'Kumaliza kufikia Desemba, weka <b>' + k(Math.ceil(left / monthsLeftYear)) + '</b> kwa mwezi.' : 'To finish by December, save <b>' + k(Math.ceil(left / monthsLeftYear)) + '</b> a month.');
   }
-  const stk = saveStreak(d.myContrib, today), svRows = d.myContrib.filter(c => c.contributionType !== 'Share'), lastPaid = svRows.map(c => c.date).filter(Boolean).sort().pop() || '';
+  const stk = saveStreak(d.myContrib, today), svRows = d.myContrib.filter(c => isSavRec(c)), lastPaid = svRows.map(c => c.date).filter(Boolean).sort().pop() || '';
   const totalCard = mhCard(mhTitle('💰', mhLang === 'sw' ? 'JUMLA YA AKIBA YANGU' : 'MY TOTAL SAVINGS') + '<div style="font-size:30px;font-weight:800;color:#1b5e20;">' + k(d.savings) + '</div>' +
     '<div style="font-size:12.5px;color:#555;margin-top:2px;">' + (mhLang === 'sw' ? 'Imejumlishwa kutoka michango ' : 'Added up from your ') + svRows.length + (mhLang === 'sw' ? '' : ' contribution' + (svRows.length === 1 ? '' : 's')) + (lastPaid ? ' · ' + (mhLang === 'sw' ? 'ya mwisho ' : 'last paid ') + escHtml(lastPaid) : '') + '</div>' +
     '<div style="font-size:12.5px;color:#555;margin-top:2px;">' + t('share capital') + ' ' + k(d.cap + d.shareContrib) + '</div>' +
@@ -7043,7 +7086,7 @@ async function memberHomeRender(memberName) {
     '<div style="font-size:12.5px;">' + escHtml(lfStreakMsg(stk)) + (stk.qualified ? ' ' + (mhLang === 'sw' ? 'Unaweza kuomba hadi mara 3 ya akiba yako.' : 'You can apply for up to 3 times your savings.') : ' ' + (mhLang === 'sw' ? 'Ukikosa mwezi, unaondolewa; kisha miezi ' + REQUAL_MONTHS + ' mfululizo inarudisha sifa.' : 'If you miss a month you are disqualified; after that ' + REQUAL_MONTHS + ' more months in a row qualify you again.')) + '</div></div>');
   let sv = mhTitleRow('💰', t('Savings')) + totalCard + mhCard(mhTitle('🎯', t('MY SAVINGS GOAL')) +
     '<div style="font-size:22px;font-weight:800;">' + k(have) + ' <span style="font-size:13px;font-weight:600;color:#555;">' + t('of') + ' ' + k(goal) + '</span></div>' + mhBar(pct, pct >= 100 ? '#2e7d32' : '#43a047') +
-    '<div style="font-size:12.5px;color:#444;margin-top:5px;">' + (pct >= 100 ? '🎉 <b>' + t('Goal reached — well done!') + '</b>' : '<b>' + pct + '%</b> ' + t('done') + ' · ' + k(left) + ' ' + t('to go')) + ' (' + t('savings') + ' ' + k(PORTAL_GOAL.savings) + ' + ' + t('share capital') + ' ' + k(PORTAL_GOAL.shares) + ')</div>' +
+    '<div style="font-size:12.5px;color:#444;margin-top:5px;">' + (pct >= 100 ? '🎉 <b>' + t('Goal reached — well done!') + '</b>' : '<b>' + pct + '%</b> ' + t('done') + ' · ' + k(left) + ' ' + t('to go')) + ' (' + t('savings') + ' ' + k(PORTAL_GOAL.savings) + ')</div>' +
     '<div style="font-size:12px;font-weight:800;margin:12px 0 5px;color:#1b5e20;">' + t('LAST 12 MONTHS — saved in') + ' ' + kept + ' ' + t('of') + ' 12</div>' +
     '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;">' + months.map(m => { const ok = m.amt >= PORTAL_GOAL.monthMin, hgt = m.amt > 0 ? Math.max(8, Math.round(m.amt / mx * 34)) : 3; return '<div title="' + escHtml(m.key) + ': ' + k(m.amt) + '" style="text-align:center;border-radius:8px;padding:5px 2px;background:' + (ok ? '#e8f5e9' : '#f1f1f1') + ';"><div style="height:36px;display:flex;align-items:flex-end;justify-content:center;"><div style="width:60%;height:' + hgt + 'px;background:' + (ok ? '#43a047' : '#bdbdbd') + ';border-radius:3px 3px 0 0;"></div></div><div style="font-size:11px;font-weight:700;">' + m.lbl + '</div><div style="font-size:10.5px;color:#555;">' + (m.amt > 0 ? mhShort(m.amt) : '–') + '</div></div>'; }).join('') + '</div>' +
     '<div style="font-size:11px;color:#777;margin-top:5px;">' + t('Green = saved') + ' ' + k(PORTAL_GOAL.monthMin) + ' ' + t('or more that month.') + '</div>' +
@@ -7134,7 +7177,7 @@ async function memberHomeRender(memberName) {
     else if (a === 'size') { mhPrefSet('size', String((parseInt(mhPrefGet('size', '0'), 10) + 1) % 3)); mhApplyLook(); }
     else if (a === 'dark') { mhPrefSet('dark', mhPrefGet('dark', '0') === '1' ? '0' : '1'); mhApplyLook(); b.textContent = mhPrefGet('dark', '0') === '1' ? '☀️' : '🌙'; }
     else if (a === 'share') {
-      const lines = ['*East Kamagak Farmers SACCO — statement*', memberName + ' (' + (member.memberNumber || '') + ')', 'Date: ' + today, '', 'Savings: ' + k(d.savings + d.shareContrib), 'Share capital: ' + k(d.cap), 'Goal: ' + k(have) + ' of ' + k(goal) + ' (' + pct + '%)', 'Loan owed: ' + k(d.outstanding), '', 'Recent payments:'].concat(lastTen.slice(0, 5).map(p => '• ' + p.date + ' ' + p.what + ' ' + k(p.amt)));
+      const lines = ['*East Kamagak Farmers SACCO — statement*', memberName + ' (' + (member.memberNumber || '') + ')', 'Date: ' + today, '', 'Savings: ' + k(d.savings), 'Share capital: ' + k(d.cap), 'Goal: ' + k(have) + ' of ' + k(goal) + ' (' + pct + '%)', 'Loan owed: ' + k(d.outstanding), '', 'Recent payments:'].concat(lastTen.slice(0, 5).map(p => '• ' + p.date + ' ' + p.what + ' ' + k(p.amt)));
       const txt = lines.join('\n');
       if (navigator.share) { try { await navigator.share({ text: txt }); return; } catch (x) { if (x && x.name === 'AbortError') return; } }
       window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
