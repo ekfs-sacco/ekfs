@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AQ</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AR</span></p>
   </div>
 </div>
 
@@ -5639,6 +5639,47 @@ async function cardOpen(member) {
   };
   draw(cardPayload(member, code));
 }
+// ---- ID Cards page (all members) ----
+async function cardIssueLogin(member) {
+  const users = await db.collection(USERS_COLLECTION).where('linkedMemberName', '==', member.memberName).get();
+  if (users.empty) return null;
+  const ud = users.docs[0], data = ud.data(), pw = genTempPassword(); let ver = 0;
+  try { ver = await fbCreateAccount(data.username, pw, Math.max(data.authVer || 1, data.qrVer || 0) + 1, true); } catch (e) { console.warn(e); }
+  const upd = { qrIssuedAt: new Date().toISOString() }; if (ver) { upd.qrVer = ver; upd.qrPassword = ''; } else { upd.qrPassword = pw; }
+  await ud.ref.update(upd); auditLog('qr sign-in card issued', 'app_users', ud.id, data.username);
+  return { username: data.username, pw };
+}
+async function idcOpen() {
+  if (!cardAllowed()) { alert('Only Admin, Chairperson, Official or Bookkeeper can print ID cards.'); return; }
+  const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#f4f6f4;z-index:9500;overflow:auto;color:#111;';
+  ov.innerHTML = '<div style="position:sticky;top:0;background:#1b5e20;color:#fff;padding:10px;display:flex;justify-content:space-between;align-items:center;z-index:2"><b>🪪 ID Cards</b><button type="button" id="idcX" style="padding:6px 12px;border-radius:8px;border:none;font-weight:700">Close</button></div>' +
+    '<div style="max-width:720px;margin:0 auto;padding:10px"><input id="idcQ" placeholder="Search name or member number…" style="width:100%;padding:11px;border:1px solid #bbb;border-radius:8px;box-sizing:border-box;font-size:15px">' +
+    '<label style="display:flex;gap:8px;align-items:flex-start;margin:10px 0;font-size:13.5px;background:#fff8e1;border:1px solid #e6c200;border-radius:8px;padding:8px"><input type="checkbox" id="idcLogin" style="margin-top:3px"><span><b>Include QR sign-in (password code)</b><br><span style="color:#555">The member can also sign in by scanning the card; their normal password keeps working. A new sign-in code is made for each card printed. Members without a portal account get an ordinary card.</span></span></label>' +
+    '<button type="button" id="idcAll" class="btn-primary" style="width:100%;padding:12px;font-size:15px">🖨 Print all</button><div id="idcMsg" style="margin:6px 0;font-weight:700;color:#1b5e20;min-height:18px"></div><div id="idcList"></div></div>';
+  document.body.appendChild(ov);
+  let members = (await getCollectionEntriesWithId('tablebanking', 'member-register')).filter(m => (m.status || 'Active') === 'Active').sort((a, b) => String(a.memberNumber).localeCompare(String(b.memberNumber), undefined, { numeric: true }));
+  const say = (t, bad) => { const m = ov.querySelector('#idcMsg'); m.textContent = t; m.style.color = bad ? '#b71c1c' : '#1b5e20'; };
+  const draw = () => {
+    const q = ov.querySelector('#idcQ').value.trim().toLowerCase(); const f = members.filter(m => !q || String(m.memberName || '').toLowerCase().includes(q) || String(m.memberNumber || '').toLowerCase().includes(q));
+    ov.querySelector('#idcAll').textContent = '🖨 Print all (' + members.length + ')';
+    ov.querySelector('#idcList').innerHTML = f.map(m => '<div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #d5ddd5;border-radius:10px;padding:8px 10px;margin:5px 0"><div style="flex:1;min-width:0"><b>' + escHtml(m.memberName || '') + '</b><div style="font-size:12px;color:#555">' + escHtml(m.memberNumber || '') + (posFor(m) ? ' · ' + escHtml(posFor(m)) : '') + '</div></div><button type="button" data-p="' + m.__id + '" style="padding:9px 12px;border:none;border-radius:8px;background:#1565c0;color:#fff;font-weight:800">Print ID</button></div>').join('') || '<div style="padding:16px;color:#777">No members found.</div>';
+    ov.querySelectorAll('[data-p]').forEach(b => b.onclick = async () => { const m = members.find(x => x.__id === b.dataset.p); b.disabled = true; try { cards([m]); } finally { b.disabled = false; } });
+  };
+  const cards = async (list) => {
+    const withLogin = ov.querySelector('#idcLogin').checked; const out = []; let n = 0, noAcc = 0;
+    if (withLogin && !confirm('This makes a new sign-in code for ' + list.length + ' member' + (list.length === 1 ? '' : 's') + ' (members with a portal account). Their normal passwords keep working. Continue?')) return;
+    for (const m of list) {
+      say('Preparing ' + (++n) + ' of ' + list.length + '…');
+      try { const code = await cardEnsure(m); let lg = null; if (withLogin) { lg = await cardIssueLogin(m); if (!lg) noAcc++; } out.push(cardHtml(m, cardPayload(m, code, lg), !!lg)); } catch (e) { console.warn(e); }
+    }
+    say(out.length + ' card' + (out.length === 1 ? '' : 's') + ' ready' + (noAcc ? ' · ' + noAcc + ' without a portal account got an ordinary card' : '') + '.');
+    if (out.length) cardPrint(out);
+  };
+  ov.querySelector('#idcX').onclick = () => ov.remove();
+  ov.querySelector('#idcQ').oninput = draw;
+  ov.querySelector('#idcAll').onclick = () => { const q = ov.querySelector('#idcQ').value.trim(); if (!confirm('Print cards for all ' + members.length + ' active members?')) return; cards(members); };
+  draw();
+}
 async function cardBulk() {
   if (!cardAllowed()) return;
   const members = (await getCollectionEntriesWithId('tablebanking', 'member-register')).filter(m => (m.status || 'Active') === 'Active');
@@ -5756,10 +5797,11 @@ function cardNavSetup() {
   const nav0 = document.getElementById('viewNav');
   if (nav0 && getSession() && !document.getElementById('pwNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'pwNavBtn'; b.textContent = '🔑 My password'; b.style.cssText = 'flex:0 0 auto;background:#37474f!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', pwChangeOpen); nav0.appendChild(b); }
   const nav = document.getElementById('viewNav'); if (!nav || !cardAllowed()) return;
-  [['attNavBtn', '📋 Attendance', '#6a1b9a', attOpen], ['scanNavBtn', '📷 Scan card', '#00695c', scanProfileOpen]].forEach(a => {
+  [['idcNavBtn', '🪪 ID Cards', '#1565c0', idcOpen], ['attNavBtn', '📋 Attendance', '#6a1b9a', attOpen], ['scanNavBtn', '📷 Scan card', '#00695c', scanProfileOpen]].forEach(a => {
     if (document.getElementById(a[0])) return; const b = document.createElement('button'); b.type = 'button'; b.id = a[0]; b.textContent = a[1];
     b.style.cssText = 'flex:0 0 auto;background:' + a[2] + '!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', a[3]); nav.appendChild(b);
   });
+  { const w = nav.querySelector('[data-v=ward]'); if (w) { let ref = w; ['idcNavBtn', 'attNavBtn', 'scanNavBtn'].forEach(id => { const b = document.getElementById(id); if (b) { if (ref.nextElementSibling !== b) ref.after(b); ref = b; } }); } }
 }
 function cardFabSetup() {
   const ok = cardAllowed(); let fab = document.getElementById('cardFab');
