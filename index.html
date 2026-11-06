@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.</div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AV</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AW</span></p>
   </div>
 </div>
 
@@ -5695,6 +5695,69 @@ async function idcOpen() {
   ov.querySelector('#idcAll').onclick = () => { const q = ov.querySelector('#idcQ').value.trim(); if (!confirm('Print cards for all ' + members.length + ' active members?')) return; cards(members); };
   draw();
 }
+// ---- Membership card requests (member applies, officials process) ----
+const CRQ_FEE = 300;
+const CRQ_STEPS = ['Submitted', 'Payment confirmed', 'Card being printed', 'Ready for collection', 'Collected'];
+function crqCol() { return db.collection(storageKey('tablebanking', 'card-request')); }
+function crqActive(r) { return r && CRQ_STEPS.indexOf(r.status) >= 0 && r.status !== 'Collected'; }
+async function cardReqPortal(root, member, memberName) {
+  const sw = mhLang === 'sw', t = (a, b) => sw ? b : a;
+  const slot = root.querySelector('#mhCardReq'); if (!slot) return;
+  let all = []; try { all = await getCollectionEntriesWithId('tablebanking', 'card-request'); } catch (e) { slot.innerHTML = ''; return; }
+  const mine = all.filter(r => r.memberName === memberName).sort((a, b) => String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || '')));
+  const cur = mine[0], P = PORTAL_PAY;
+  const box = (inner) => '<div style="background:#fff;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,.12);padding:14px;margin:10px 0;"><div style="font-weight:800;color:#1b5e20;font-size:13px;letter-spacing:.4px;margin-bottom:8px;">🪪 ' + t('MY MEMBERSHIP CARD', 'KADI YANGU YA UANACHAMA') + '</div>' + inner + '</div>';
+  const form = () => '<div style="font-size:13.5px;color:#333;">' + t('Apply for your SACCO membership card. Pay <b>KES ' + CRQ_FEE + '</b> by M-Pesa, then type the M-Pesa code below.', 'Omba kadi yako ya uanachama. Lipa <b>KES ' + CRQ_FEE + '</b> kwa M-Pesa, kisha andika msimbo wa M-Pesa hapa chini.') + '</div>' +
+    '<div style="background:#f1f8e9;border-radius:10px;padding:9px;margin:8px 0;font-size:13.5px;">M-Pesa → Lipa na M-Pesa → <b>Pay Bill</b><br>' + t('Business number', 'Namba ya biashara') + ': <b>' + escHtml(P.paybill) + '</b><br>' + t('Account number', 'Namba ya akaunti') + ': <b>' + escHtml(P.account) + '</b><br>' + t('Amount', 'Kiasi') + ': <b>KES ' + CRQ_FEE + '</b></div>' +
+    '<input id="crqCode" maxlength="12" autocapitalize="characters" placeholder="' + t('M-Pesa code e.g. SLK4X7Y2AB', 'Msimbo wa M-Pesa mfano SLK4X7Y2AB') + '" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #bbb;border-radius:10px;font-size:16px;text-transform:uppercase;letter-spacing:1px;">' +
+    '<button type="button" id="crqSend" style="margin-top:8px;width:100%;padding:12px;border-radius:12px;border:none;background:#1b5e20;color:#fff;font-weight:800;font-size:14px;">' + t('Submit request', 'Tuma ombi') + '</button><div id="crqMsg" style="margin-top:6px;font-size:13px;font-weight:700;color:#b71c1c;"></div>';
+  let html;
+  if (cur && crqActive(cur)) {
+    const idx = CRQ_STEPS.indexOf(cur.status);
+    const lbl = { 'Submitted': t('Request received', 'Ombi limepokelewa'), 'Payment confirmed': t('Payment confirmed', 'Malipo yamethibitishwa'), 'Card being printed': t('Card being printed', 'Kadi inachapishwa'), 'Ready for collection': t('Ready for collection', 'Tayari kuchukuliwa'), 'Collected': t('Collected', 'Imechukuliwa') };
+    html = '<div style="font-size:12.5px;color:#555;margin-bottom:6px;">' + t('Request of ', 'Ombi la ') + escHtml(cur.date || '') + ' · M-Pesa ' + escHtml(cur.mpesaCode || '') + '</div>' +
+      CRQ_STEPS.map((s, i) => '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;"><div style="width:26px;height:26px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;' + (i < idx ? 'background:#2e7d32;color:#fff;' : i === idx ? 'background:#f9a825;color:#3e2723;box-shadow:0 0 0 3px #ffe08277;' : 'background:#e0e0e0;color:#777;') + '">' + (i < idx ? '✓' : i + 1) + '</div><div style="font-size:14px;' + (i === idx ? 'font-weight:800;' : i < idx ? '' : 'color:#888;') + '">' + lbl[s] + '</div></div>').join('') +
+      (cur.status === 'Ready for collection' ? '<div style="background:#e8f5e9;border:1px solid #2e7d32;border-radius:10px;padding:9px;margin-top:8px;font-size:13.5px;font-weight:700;color:#1b5e20;">🎉 ' + t('Your card is ready. Collect it from the SACCO office.', 'Kadi yako iko tayari. Ichukue ofisini mwa SACCO.') + '</div>' : '') +
+      (cur.note ? '<div style="font-size:12.5px;color:#555;margin-top:6px;">' + escHtml(cur.note) + '</div>' : '');
+  } else {
+    html = (cur && cur.status === 'Rejected' ? '<div style="background:#ffebee;border-radius:10px;padding:9px;margin-bottom:8px;font-size:13px;color:#b71c1c;"><b>' + t('Your last request was not accepted.', 'Ombi lako la mwisho halikukubaliwa.') + '</b>' + (cur.note ? '<br>' + escHtml(cur.note) : '') + '</div>' : '') +
+      (cur && cur.status === 'Collected' ? '<div style="background:#e8f5e9;border-radius:10px;padding:9px;margin-bottom:8px;font-size:13px;color:#1b5e20;">✔ ' + t('You collected your card on ', 'Ulichukua kadi yako tarehe ') + escHtml(cur.collectedAt || '') + '. ' + t('Lost it? You can apply again.', 'Umepoteza? Unaweza kuomba tena.') + '</div>' : '') + form();
+  }
+  slot.innerHTML = box(html);
+  const ban = root.querySelector('#mhCardBan'); if (ban) ban.innerHTML = cur && cur.status === 'Ready for collection' ? '<div style="background:#e8f5e9;border:1.5px solid #2e7d32;border-radius:14px;padding:11px;margin:8px 0;font-size:14px;font-weight:800;color:#1b5e20;">🪪 ' + t('Your membership card is ready for collection!', 'Kadi yako ya uanachama iko tayari kuchukuliwa!') + '</div>' : '';
+  const send = slot.querySelector('#crqSend'); if (!send) return;
+  send.onclick = async () => {
+    const msg = slot.querySelector('#crqMsg'), code = slot.querySelector('#crqCode').value.trim().toUpperCase().replace(/\s+/g, '');
+    if (!/^[A-Z0-9]{10}$/.test(code)) { msg.textContent = t('Type the 10-character M-Pesa code from your payment message.', 'Andika msimbo wa M-Pesa wenye herufi 10 kutoka kwa ujumbe wa malipo.'); return; }
+    if (all.some(r => String(r.mpesaCode || '').toUpperCase() === code)) { msg.textContent = t('This M-Pesa code has already been used.', 'Msimbo huu wa M-Pesa umeshatumika.'); return; }
+    send.disabled = true;
+    try { await crqCol().add({ date: new Date().toISOString().slice(0, 10), createdAt: new Date().toISOString(), memberName, memberNumber: member.memberNumber || '', mpesaCode: code, amount: CRQ_FEE, status: 'Submitted', note: '' }); auditLog('card request', 'card-request', '', memberName + ' · ' + code); cardReqPortal(root, member, memberName); }
+    catch (x) { send.disabled = false; msg.textContent = t('Could not send. Check your internet and try again.', 'Imeshindwa kutuma. Angalia mtandao ujaribu tena.'); }
+  };
+}
+async function crqOpen() {
+  if (!cardAllowed()) { alert('Only Admin, Chairperson, Official or Bookkeeper can handle card requests.'); return; }
+  const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#f4f6f4;z-index:9500;overflow:auto;color:#111;';
+  ov.innerHTML = '<div style="position:sticky;top:0;background:#1b5e20;color:#fff;padding:10px;display:flex;justify-content:space-between;align-items:center;z-index:2"><b>🪪 Card requests</b><button type="button" id="crqX" style="padding:6px 12px;border-radius:8px;border:none;font-weight:700">Close</button></div><div style="max-width:720px;margin:0 auto;padding:10px"><div style="font-size:12.5px;color:#555;margin-bottom:8px">Members pay KES ' + CRQ_FEE + ' to the Paybill and type the M-Pesa code. Check the code in the M-Pesa inbox, then move the request along. Members see each step on their portal. The KES ' + CRQ_FEE + ' is not posted to the books automatically.</div><div id="crqTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div><div id="crqList"></div></div>';
+  document.body.appendChild(ov); ov.querySelector('#crqX').onclick = () => { ov.remove(); cardNavSetup(); };
+  let filter = 'Open', rows = [];
+  const next = { 'Submitted': ['Payment confirmed', 'Confirm payment'], 'Payment confirmed': ['Card being printed', 'Start printing'], 'Card being printed': ['Ready for collection', 'Post: Ready for collection'], 'Ready for collection': ['Collected', 'Mark collected'] };
+  const load = async () => { rows = (await getCollectionEntriesWithId('tablebanking', 'card-request')).sort((a, b) => String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''))); draw(); };
+  const upd = async (r, patch, what) => { await crqCol().doc(r.__id).update(Object.assign({ updatedAt: new Date().toISOString(), updatedBy: (getSession() || {}).username || '' }, patch)); auditLog('card request: ' + what, 'card-request', r.__id, r.memberName); await load(); };
+  const draw = () => {
+    const open = rows.filter(r => crqActive(r)), cnt = s => rows.filter(r => r.status === s).length;
+    ov.querySelector('#crqTabs').innerHTML = [['Open', 'Open (' + open.length + ')'], ['Ready for collection', 'Ready (' + cnt('Ready for collection') + ')'], ['Done', 'Collected / closed']].map(a => '<button type="button" data-f="' + a[0] + '" style="padding:7px 12px;border-radius:16px;border:1px solid #1b5e20;font-weight:700;' + (filter === a[0] ? 'background:#1b5e20;color:#fff' : 'background:#fff;color:#1b5e20') + '">' + a[1] + '</button>').join('');
+    ov.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { filter = b.dataset.f; draw(); });
+    const list = rows.filter(r => filter === 'Open' ? crqActive(r) : filter === 'Done' ? !crqActive(r) : r.status === filter);
+    ov.querySelector('#crqList').innerHTML = list.map(r => '<div style="background:#fff;border:1px solid #d5ddd5;border-radius:10px;padding:10px;margin:6px 0"><div style="display:flex;justify-content:space-between;gap:8px"><b>' + escHtml(r.memberName || '') + '</b><span style="font-size:12px;font-weight:800;color:#1b5e20">' + escHtml(r.status) + '</span></div><div style="font-size:12px;color:#555">' + escHtml(r.memberNumber || '') + ' · ' + escHtml(r.date || '') + ' · M-Pesa <b>' + escHtml(r.mpesaCode || '') + '</b> · KES ' + (r.amount || CRQ_FEE) + '</div>' + (r.note ? '<div style="font-size:12px;color:#777">Note: ' + escHtml(r.note) + '</div>' : '') +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px">' + (next[r.status] ? '<button type="button" data-n="' + r.__id + '" style="padding:8px 11px;border:none;border-radius:8px;background:#1b5e20;color:#fff;font-weight:800">' + next[r.status][1] + '</button>' : '') +
+      (crqActive(r) ? '<button type="button" data-p="' + r.__id + '" style="padding:8px 11px;border:none;border-radius:8px;background:#1565c0;color:#fff;font-weight:800">🖨 Print card</button><button type="button" data-r="' + r.__id + '" style="padding:8px 11px;border:none;border-radius:8px;background:#b71c1c;color:#fff;font-weight:800">Reject</button>' : '') + '</div><div data-rj="' + r.__id + '"></div></div>').join('') || '<div style="padding:16px;color:#777">Nothing here.</div>';
+    ov.querySelectorAll('[data-n]').forEach(b => b.onclick = async () => { const r = rows.find(x => x.__id === b.dataset.n), n = next[r.status]; b.disabled = true; const patch = { status: n[0] }; if (n[0] === 'Collected') patch.collectedAt = new Date().toISOString().slice(0, 10); try { await upd(r, patch, n[0]); } catch (e) { alert('Could not update. Check internet.'); b.disabled = false; } });
+    ov.querySelectorAll('[data-p]').forEach(b => b.onclick = async () => { const r = rows.find(x => x.__id === b.dataset.p); const ms = await getCollectionEntriesWithId('tablebanking', 'member-register'); const m = ms.find(x => x.memberName === r.memberName); if (!m) { alert('Member not found in the register.'); return; } await cardLoadPhotos(); const code = await cardEnsure(m); cardPrint([cardHtml(m, cardPayload(m, code))]); });
+    ov.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { const r = rows.find(x => x.__id === b.dataset.r), h = ov.querySelector('[data-rj="' + r.__id + '"]'); h.innerHTML = '<input placeholder="Reason (the member will see it)" style="width:100%;box-sizing:border-box;padding:9px;margin-top:6px;border:1px solid #bbb;border-radius:8px"><button type="button" style="margin-top:5px;padding:8px 11px;border:none;border-radius:8px;background:#b71c1c;color:#fff;font-weight:800">Confirm reject</button>'; h.querySelector('button').onclick = () => upd(r, { status: 'Rejected', note: h.querySelector('input').value.trim() }, 'rejected'); });
+  };
+  load();
+}
 async function cardBulk() {
   if (!cardAllowed()) return;
   const members = (await getCollectionEntriesWithId('tablebanking', 'member-register')).filter(m => (m.status || 'Active') === 'Active');
@@ -5812,11 +5875,11 @@ function cardNavSetup() {
   const nav0 = document.getElementById('viewNav');
   if (nav0 && getSession() && !document.getElementById('pwNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'pwNavBtn'; b.textContent = '🔑 My password'; b.style.cssText = 'flex:0 0 auto;background:#37474f!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', pwChangeOpen); nav0.appendChild(b); }
   const nav = document.getElementById('viewNav'); if (!nav || !cardAllowed()) return;
-  [['idcNavBtn', '🪪 ID Cards', '#1565c0', idcOpen], ['attNavBtn', '📋 Attendance', '#6a1b9a', attOpen], ['scanNavBtn', '📷 Scan card', '#00695c', scanProfileOpen]].forEach(a => {
+  [['idcNavBtn', '🪪 ID Cards', '#1565c0', idcOpen], ['crqNavBtn', '🪪 Card requests', '#ef6c00', crqOpen], ['attNavBtn', '📋 Attendance', '#6a1b9a', attOpen], ['scanNavBtn', '📷 Scan card', '#00695c', scanProfileOpen]].forEach(a => {
     if (document.getElementById(a[0])) return; const b = document.createElement('button'); b.type = 'button'; b.id = a[0]; b.textContent = a[1];
     b.style.cssText = 'flex:0 0 auto;background:' + a[2] + '!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', a[3]); nav.appendChild(b);
   });
-  { const w = nav.querySelector('[data-v=ward]'); if (w) { let ref = w; ['idcNavBtn', 'attNavBtn', 'scanNavBtn'].forEach(id => { const b = document.getElementById(id); if (b) { if (ref.nextElementSibling !== b) ref.after(b); ref = b; } }); } }
+  { const w = nav.querySelector('[data-v=ward]'); if (w) { let ref = w; ['idcNavBtn', 'crqNavBtn', 'attNavBtn', 'scanNavBtn'].forEach(id => { const b = document.getElementById(id); if (b) { if (ref.nextElementSibling !== b) ref.after(b); ref = b; } }); } }
 }
 function cardFabSetup() {
   const ok = cardAllowed(); let fab = document.getElementById('cardFab');
@@ -6953,7 +7016,7 @@ let globalWatchersStarted = false;
 function startGlobalLedgerWatchers() {
   if (globalWatchersStarted) return;
   globalWatchersStarted = true;
-  ['member-register', 'contribution-record', 'loan-issued', 'loan-repayment', 'fines-penalties', 'expenditure', 'other-expenses', 'guarantor-register', 'group-loan-issued', 'grant-budget', 'grant-expenditure', 'mobilization-payroll', 'mobilized-member', 'mobilizer-register', 'directory', 'asset-register', 'mpesa-inbox', 'portfolio-review', 'credit-appraisal', 'loan-recovery', 'loan-restructure', 'member-settlement', 'member-notice', 'loan-request'].forEach(recId => {
+  ['member-register', 'contribution-record', 'loan-issued', 'loan-repayment', 'fines-penalties', 'expenditure', 'other-expenses', 'guarantor-register', 'group-loan-issued', 'grant-budget', 'grant-expenditure', 'mobilization-payroll', 'mobilized-member', 'mobilizer-register', 'directory', 'asset-register', 'mpesa-inbox', 'card-request', 'portfolio-review', 'credit-appraisal', 'loan-recovery', 'loan-restructure', 'member-settlement', 'member-notice', 'loan-request'].forEach(recId => {
     db.collection(storageKey('tablebanking', recId)).onSnapshot(() => {
       scheduleLedgerRefresh();
     }, (err) => console.warn('Ledger watcher failed for ' + recId + ':', err));
@@ -7008,7 +7071,7 @@ let memberRefreshTimer = null;
 function startMemberLedgerWatchers(memberName) {
   if (memberWatchersStarted) return;
   memberWatchersStarted = true;
-  ['contribution-record', 'loan-issued', 'loan-repayment', 'fines-penalties', 'loan-request', 'credit-appraisal', 'member-notice', 'meeting-summary'].forEach(recId => {
+  ['contribution-record', 'loan-issued', 'loan-repayment', 'fines-penalties', 'loan-request', 'credit-appraisal', 'member-notice', 'meeting-summary', 'card-request'].forEach(recId => {
     db.collection(storageKey('tablebanking', recId)).onSnapshot(() => {
       if (memberRefreshTimer) clearTimeout(memberRefreshTimer);
       memberRefreshTimer = setTimeout(() => { initMemberView(memberName); }, 200);
@@ -7215,7 +7278,7 @@ async function memberHomeRender(memberName) {
   // ================= ME =================
   const dl2 = (a, b) => b ? '<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-top:1px solid #eee;font-size:13px;"><span style="color:#666;">' + a + '</span><b style="text-align:right;">' + escHtml(b) + '</b></div>' : '';
   let me = mhTitleRow('👤', t('Me')) + mhCard(mhTitle('⚙️', t('Settings')) + '<div id="mhBar" style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" data-a="lang" class="mhTool">' + (mhLang === 'sw' ? '🇬🇧 English' : '🇰🇪 Kiswahili') + '</button><button type="button" data-a="size" class="mhTool">Aa</button><button type="button" data-a="dark" class="mhTool">' + (mhPrefGet('dark', '0') === '1' ? '☀️' : '🌙') + '</button><button type="button" data-a="share" class="mhTool">📤 ' + t('Share') + '</button></div><div data-slot="print" style="margin-top:8px;"></div>') +
-    mhCard(mhTitle('👤', t('MY DETAILS')) + dl2(t('Member number'), member.memberNumber) + dl2('Sex', member.sex) + dl2(t('Phone'), member.contact) + dl2('ID', member.idNo) + dl2('CIG', member.cigName) + dl2(t('Next of kin'), [member.nokName, member.nokRelationship].filter(Boolean).join(' — ')) + dl2(t('Next of kin') + ' ' + t('Phone'), member.nokPhone) +
+    '<div id="mhCardReq"></div>' + mhCard(mhTitle('👤', t('MY DETAILS')) + dl2(t('Member number'), member.memberNumber) + dl2('Sex', member.sex) + dl2(t('Phone'), member.contact) + dl2('ID', member.idNo) + dl2('CIG', member.cigName) + dl2(t('Next of kin'), [member.nokName, member.nokRelationship].filter(Boolean).join(' — ')) + dl2(t('Next of kin') + ' ' + t('Phone'), member.nokPhone) +
       '<button type="button" id="mhCorrect" style="margin-top:10px;width:100%;padding:12px;border-radius:12px;border:none;background:#7b1fa2;color:#fff;font-weight:800;font-size:14px;box-shadow:0 2px 5px rgba(0,0,0,.2);">✎ ' + t('Ask the SACCO to correct my details') + '</button>') +
     '<button type="button" id="mhPw" style="margin-top:10px;width:100%;padding:12px;border-radius:12px;border:none;background:#37474f;color:#fff;font-weight:800;font-size:14px;">🔑 ' + (mhLang === 'sw' ? 'Badilisha nenosiri langu' : 'Change my password') + '</button>' + '<div style="font-size:11.5px;color:#777;margin:6px 4px;">' + (mhLang === 'sw' ? 'Unaona rekodi zako tu. Ukiona kosa, wasiliana na afisa.' : 'You are viewing your own records only. If any figure looks wrong, contact an official.') + '</div>';
   // ================= MOUNT =================
@@ -7230,6 +7293,8 @@ async function memberHomeRender(memberName) {
   bar.innerHTML = MH_TABS.map(x => '<button type="button" data-tab="' + x[0] + '" style="flex:1;border:none;padding:7px 2px 6px;font-size:11.5px;display:flex;flex-direction:column;align-items:center;gap:1px;"><span style="font-size:22px;line-height:1.1;">' + x[1] + '</span>' + t(x[2]) + '</button>').join('');
   bar.querySelectorAll('button').forEach(b => { b.onclick = () => mhShowTab(b.dataset.tab); });
   container.appendChild(hold); container.appendChild(bar);
+  { const hp = root.querySelector('#mhPane-home'); if (hp) hp.insertAdjacentHTML('afterbegin', '<div id="mhCardBan"></div>'); }
+  cardReqPortal(root, member, memberName);
   mhShowTab(mhTab);
   mhAsOfUpdate(); if (!window.__mhNetWired) { window.__mhNetWired = true; window.addEventListener('online', mhAsOfUpdate); window.addEventListener('offline', mhAsOfUpdate); }
   const rf = root.querySelector('#mhRefresh'); if (rf) rf.onclick = () => { rf.textContent = '…'; initMemberView(memberName); };
