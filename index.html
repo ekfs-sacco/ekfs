@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AX</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build AY</span></p>
   </div>
 </div>
 
@@ -5814,6 +5814,98 @@ function recForgotOpen() {
     } catch (e) { console.warn(e); m.style.color = '#b71c1c'; m.textContent = (e && e.code === 'auth/network-request-failed') ? 'No internet connection.' : 'Could not complete. Check your internet and try again.'; }
   };
 }
+// ---- Statement -> Records (Admin): post statement payments as 200 fee, 1000 share, rest savings ----
+const STI_FEE = 200, STI_SHARE = 1000;
+async function stiLoadStatement() {
+  let html = await ssGet();
+  if (!html) { alert('Choose your Combined Statement Search file (the .html file). It is kept only on this phone, not in the system.'); html = await ssPick(); if (!html) return null; if (html.indexOf('const DATA') < 0) { alert('That does not look like the Combined Statement Search file.'); return null; } await ssPut(html); }
+  const m = html.match(/const DATA = (\[[\s\S]*?\]);\s*\n/); if (!m) { alert('Could not read the payments in that file.'); return null; }
+  try { return JSON.parse(m[1]); } catch (e) { alert('Could not read the payments in that file.'); return null; }
+}
+async function stiOpen() {
+  const se = getSession(); if (!se || se.role !== 'admin') { alert('Only the Admin can use Statement import.'); return; }
+  const DATA = await stiLoadStatement(); if (!DATA) return;
+  const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#f4f6f4;z-index:9500;overflow:auto;color:#111;';
+  ov.innerHTML = '<div style="position:sticky;top:0;background:#1f3864;color:#fff;padding:10px;display:flex;justify-content:space-between;align-items:center;z-index:2"><b>📥 Statement → Records</b><button type="button" id="stX" style="padding:6px 12px;border-radius:8px;border:none;font-weight:700">Close</button></div><div style="max-width:760px;margin:0 auto;padding:10px"><div id="stBody">Loading…</div></div>';
+  document.body.appendChild(ov); ov.querySelector('#stX').onclick = () => ov.remove();
+  const body = ov.querySelector('#stBody'); const manual = {}; let incSimba = true;
+  const l9 = p => String(p || '').replace(/\D/g, '').slice(-9);
+  const tok = s => new Set(String(s || '').toLowerCase().replace(/[^a-z ]/g, '').split(/\s+/).filter(w => w.length > 1));
+  async function build() {
+    body.innerHTML = 'Reading the system…';
+    const [members, contrib, ledger, al] = await Promise.all([getCollectionEntriesWithId('tablebanking', 'member-register'), getCollectionEntriesWithId('tablebanking', 'contribution-record'), getCollectionEntriesWithId('tablebanking', 'stmt-posted').catch(() => []), aliasLoad()]);
+    const act = members.filter(m => !m.status || m.status === 'Active');
+    const byPh = {}; act.forEach(m => { const k = l9(m.contact); if (k.length === 9) (byPh[k] = byPh[k] || []).push(m); });
+    const nmKey = n => String(n || '').trim().toLowerCase();
+    const byNm = {}; members.forEach(m => { byNm[nmKey(m.memberName)] = m; });
+    const recorded = new Set(); contrib.forEach(c => { if (c.mpesaRef) recorded.add(String(c.mpesaRef).trim().toUpperCase()); }); ledger.forEach(l => { if (l.code) recorded.add(String(l.code).toUpperCase()); });
+    const rows = DATA.filter(r => r.credit > 0 && r.code && (incSimba || r.src !== 'simba'));
+    const pay = rows.map(r => {
+      const code = String(r.code).trim().toUpperCase(); let m = null, how = '';
+      if (manual[code]) { m = members.find(x => x.__id === manual[code]); how = 'chosen'; }
+      if (!m && r.phone && (byPh[l9(r.phone)] || []).length === 1) { m = byPh[l9(r.phone)][0]; how = 'phone'; }
+      if (!m && r.name && aliasUsable(r.name)) { const a = al.get(aliasKey(r.name)); if (a) { m = byNm[nmKey(a.member)] || null; if (m) how = 'remembered'; } }
+      if (!m && r.src === 'coop' && r.name) { const t = tok(r.name); if (t.size >= 2) { const h = act.filter(x => { const mt = tok(x.memberName); let n = 0; t.forEach(w => { if (mt.has(w)) n++; }); return n >= 2; }); if (h.length === 1) { m = h[0]; how = 'name'; } } }
+      return { code, date: r.iso, amount: r.credit, payer: r.name || '', phone: r.phone || '', src: r.src, m, how, done: recorded.has(code) };
+    });
+    const per = {};
+    pay.filter(p => p.m).forEach(p => { const e = per[p.m.__id] = per[p.m.__id] || { m: p.m, pays: [], S: 0 }; e.pays.push(p); e.S += p.amount; });
+    const out = [];
+    Object.values(per).forEach(e => {
+      const nm = nmKey(e.m.memberName); const mine = contrib.filter(c => nmKey(c.memberName) === nm);
+      const reg = parseFloat(e.m.registrationFee) || 0, cap = parseFloat(e.m.shareCapital) || 0, shareC = mine.filter(c => c.contributionType === 'Share').reduce((a, c) => a + (parseFloat(c.amount) || 0), 0);
+      const T = mine.reduce((a, c) => a + (parseFloat(c.amount) || 0), 0) + reg + cap; let D = Math.round((e.S - T) * 100) / 100;
+      e.T = T; e.D = D; e.lines = [];
+      if (D > 0.5) {
+        let feeGap = Math.max(0, STI_FEE - reg), shGap = Math.max(0, STI_SHARE - cap - shareC);
+        e.pays.filter(p => !p.done).sort((a, b) => a.date.localeCompare(b.date)).forEach(p => {
+          if (D <= 0.5) return; let a = Math.min(p.amount, D); D -= a; const f = Math.min(a, feeGap); feeGap -= f; a -= f; const s = Math.min(a, shGap); shGap -= s; a -= s;
+          e.lines.push({ p, fee: f, share: s, sav: a });
+        });
+      }
+      e.fee = e.lines.reduce((a, l) => a + l.fee, 0); e.share = e.lines.reduce((a, l) => a + l.share, 0); e.sav = e.lines.reduce((a, l) => a + l.sav, 0); e.post = e.fee + e.share + e.sav;
+      const risky = e.pays.some(p => p.how === 'name' || p.how === 'chosen') || e.post > 5000; e.risky = risky; e.sel = !risky;
+      if (e.post > 0.5) out.push(e);
+    });
+    out.sort((a, b) => (a.risky - b.risky) || a.m.memberName.localeCompare(b.m.memberName));
+    const unm = pay.filter(p => !p.m && !p.done);
+    const doneN = pay.filter(p => p.done).length, tot = out.reduce((a, e) => a + e.post, 0);
+    const opts = '<option value="">Skip</option>' + act.slice().sort((a, b) => String(a.memberName).localeCompare(String(b.memberName))).map(m => '<option value="' + m.__id + '">' + escHtml(m.memberName) + ' (' + escHtml(m.memberNumber || '') + ')</option>').join('');
+    body.innerHTML = '<div style="background:#fff;border:1px solid #d5ddd5;border-radius:10px;padding:10px;font-size:13.5px"><b>' + pay.length + '</b> payments with M-Pesa codes read · <b>' + doneN + '</b> already on the system · <b>' + out.length + '</b> members have money to post (<b>' + fmtKES(tot) + '</b>) · <b>' + unm.length + '</b> payments have no member yet<div style="color:#555;margin-top:4px">Rule for each member: statement total minus what the system already holds. The extra is posted as <b>KES ' + STI_FEE + ' registration fee</b>, then <b>KES ' + STI_SHARE + ' share capital</b> (only if still short), then <b>savings</b> dated on the payment date. Nothing is posted until you press Post.</div><label style="display:block;margin-top:6px"><input type="checkbox" id="stSim" ' + (incSimba ? 'checked' : '') + '> Include the old Simba account (Nov 2024 – Feb 2025)</label></div>' +
+      '<h3 style="margin:12px 0 4px;color:#1b5e20">1. To post (' + out.length + ')</h3><div style="font-size:12px;color:#777;margin-bottom:4px">Ticked = looks safe (matched by phone or remembered name). Unticked = please check first (matched by name only, chosen by you, or more than KES 5,000).</div>' +
+      (out.map((e, i) => '<div style="background:#fff;border:1px solid ' + (e.risky ? '#e6a700' : '#d5ddd5') + ';border-radius:10px;padding:8px 10px;margin:5px 0"><label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" data-i="' + i + '" ' + (e.sel ? 'checked' : '') + ' style="margin-top:4px"><span style="flex:1"><b>' + escHtml(e.m.memberName) + '</b> <span style="color:#555;font-size:12px">' + escHtml(e.m.memberNumber || '') + '</span>' + (e.risky ? ' <span style="color:#b26a00;font-weight:700;font-size:12px">check</span>' : '') + '<div style="font-size:12.5px">Statement ' + fmtKES(e.S) + ' · System ' + fmtKES(e.T) + ' → post <b>' + fmtKES(e.post) + '</b>: fee ' + fmtKES(e.fee) + ' · share ' + fmtKES(e.share) + ' · savings ' + fmtKES(e.sav) + '</div><div style="font-size:11.5px;color:#777">' + e.lines.map(l => l.p.date + ' ' + l.p.amount + ' ' + l.p.code + ' (' + l.p.how + (l.p.src === 'simba' ? ', Simba' : '') + ')').join(' · ') + '</div></span></label></div>').join('') || '<div style="padding:12px;color:#777">Nothing to post.</div>') +
+      '<button type="button" id="stPost" class="btn-primary" style="width:100%;padding:12px;font-size:15px;margin-top:8px">Post ticked members</button><div id="stMsg" style="margin:6px 0;font-weight:700;color:#1b5e20"></div>' +
+      '<h3 style="margin:12px 0 4px;color:#1b5e20">2. Payments with no member (' + unm.length + ')</h3><div style="font-size:12px;color:#777;margin-bottom:4px">Pick the member if you know who paid, then press “Apply choices”. Leave Skip for non-members.</div>' +
+      unm.map(p => '<div style="background:#fff;border:1px solid #d5ddd5;border-radius:10px;padding:8px 10px;margin:5px 0;font-size:13px"><b>' + escHtml(p.payer || '(no name)') + '</b> · ' + fmtKES(p.amount) + ' · ' + p.date + '<div style="font-size:11.5px;color:#777">' + escHtml(p.phone) + ' · ' + p.code + (p.src === 'simba' ? ' · Simba' : '') + '</div><select data-c="' + p.code + '" style="width:100%;margin-top:4px;padding:8px;border-radius:8px">' + opts + '</select></div>').join('') +
+      (unm.length ? '<button type="button" id="stApply" style="width:100%;padding:11px;border:none;border-radius:10px;background:#1565c0;color:#fff;font-weight:800;margin-top:6px">Apply choices</button>' : '');
+    ov.querySelector('#stSim').onchange = ev => { incSimba = ev.target.checked; build(); };
+    const ap = ov.querySelector('#stApply'); if (ap) ap.onclick = () => { ov.querySelectorAll('select[data-c]').forEach(s => { if (s.value) manual[s.dataset.c] = s.value; }); build(); };
+    ov.querySelectorAll('input[data-i]').forEach(c => c.onchange = () => { out[+c.dataset.i].sel = c.checked; });
+    ov.querySelector('#stPost').onclick = async () => {
+      const chosen = out.filter(e => e.sel); const sum = chosen.reduce((a, e) => a + e.post, 0);
+      if (!chosen.length) { alert('Tick at least one member.'); return; }
+      if (!confirm('Post ' + fmtKES(sum) + ' for ' + chosen.length + ' member(s)?\n\nThis adds registration fees, share capital and savings records. It can be corrected afterwards in the records, but please check the list first.')) return;
+      const msg = ov.querySelector('#stMsg'); const tb = r => db.collection(storageKey('tablebanking', r)); let n = 0, fails = 0;
+      for (const e of chosen) {
+        msg.textContent = 'Posting ' + (++n) + ' of ' + chosen.length + '…';
+        try {
+          const fresh = (await tb('member-register').doc(e.m.__id).get()).data() || e.m;
+          const upd = {}; if (e.fee > 0) upd.registrationFee = (parseFloat(fresh.registrationFee) || 0) + e.fee; if (e.share > 0) upd.shareCapital = (parseFloat(fresh.shareCapital) || 0) + e.share;
+          if (Object.keys(upd).length) await tb('member-register').doc(e.m.__id).update(upd);
+          let prior = await getMemberTotalSavings(e.m.memberName);
+          for (const l of e.lines) {
+            if (l.sav > 0) { prior += l.sav; await tb('contribution-record').add({ date: l.p.date, memberName: e.m.memberName, contributionType: 'Saving', amount: l.sav, runningBalance: Math.round(prior * 100) / 100, mpesaRef: l.p.code }); }
+            await tb('stmt-posted').doc(l.p.code).set({ code: l.p.code, member: e.m.memberName, amount: l.p.amount, fee: l.fee, share: l.share, saving: l.sav, date: l.p.date, postedAt: new Date().toISOString(), by: se.username });
+            if (l.p.how === 'chosen') aliasLearn(l.p.payer, e.m.memberName);
+          }
+          auditLog('statement import', 'member-register', e.m.__id, e.m.memberName + ' · fee ' + e.fee + ' share ' + e.share + ' savings ' + e.sav);
+        } catch (x) { console.warn(x); fails++; }
+      }
+      alert('Done. Posted for ' + (chosen.length - fails) + ' member(s)' + (fails ? '; ' + fails + ' failed, please run it again (finished ones are not repeated).' : '.')); build();
+    };
+  }
+  build();
+}
 async function cardBulk() {
   if (!cardAllowed()) return;
   const members = (await getCollectionEntriesWithId('tablebanking', 'member-register')).filter(m => (m.status || 'Active') === 'Active');
@@ -5936,6 +6028,7 @@ function cardNavSetup() {
     b.style.cssText = 'flex:0 0 auto;background:' + a[2] + '!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', a[3]); nav.appendChild(b);
   });
   if ((getSession() || {}).role === 'admin' && !document.getElementById('rcNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'rcNavBtn'; b.textContent = '🛟 Recovery code'; b.style.cssText = 'flex:0 0 auto;background:#b71c1c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', recCodeOpen); nav.appendChild(b); }
+  if ((getSession() || {}).role === 'admin' && !document.getElementById('stiNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'stiNavBtn'; b.textContent = '📥 Statement import'; b.style.cssText = 'flex:0 0 auto;background:#1f3864!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', stiOpen); nav.appendChild(b); }
   { const w = nav.querySelector('[data-v=ward]'); if (w) { let ref = w; ['idcNavBtn', 'crqNavBtn', 'attNavBtn', 'scanNavBtn'].forEach(id => { const b = document.getElementById(id); if (b) { if (ref.nextElementSibling !== b) ref.after(b); ref = b; } }); } }
 }
 function cardFabSetup() {
