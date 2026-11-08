@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BD</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BF</span></p>
   </div>
 </div>
 
@@ -2325,6 +2325,13 @@ const GROUP_LOAN_PRODUCTS = {
   'Vegetable/Horticulture Loan (Group)': { rate: 1, term: 4, max: 250000 },
 };
 
+async function heldLoad() {
+  let rows = []; try { rows = await getCollectionEntriesWithId('tablebanking', 'stmt-hold'); } catch (e) {}
+  const ids = new Set(rows.map(r => r.memberId || r.__id)), names = new Set(rows.map(r => String(r.member || '').trim().toLowerCase()));
+  return { n: rows.length, total: rows.reduce((a, r) => a + (parseFloat(r.total) || 0), 0), ids,
+    fm: arr => arr.map(m => ids.has(m.__id) ? Object.assign({}, m, { registrationFee: 0, shareCapital: 0 }) : m),
+    fc: arr => arr.filter(c => !names.has(String(c.memberName || '').trim().toLowerCase())) };
+}
 function otherAmountPanel(list) {
   let w = document.getElementById('otherAmtWrap');
   if (!list.length) { if (w) w.remove(); return; }
@@ -3202,9 +3209,10 @@ async function dbOverviewHtml() {
   const C = n => getCollectionEntries('tablebanking', n);
   const _se = getSession();
   if (_se && _se.role === 'bookkeeper') return dbMembersSectionHtml(await C('member-register'));
-  const [members, contrib, loans, repay, fines, exp, other, par, grant, mobilizers] = await Promise.all([
-    C('member-register'), C('contribution-record'), getCollectionEntriesWithId('tablebanking', 'loan-issued'), C('loan-repayment'),
+  const [members0, contrib0, loans, repay, fines, exp, other, par, grant, mobilizers] = await Promise.all([
+    getCollectionEntriesWithId('tablebanking', 'member-register'), C('contribution-record'), getCollectionEntriesWithId('tablebanking', 'loan-issued'), C('loan-repayment'),
     C('fines-penalties'), C('expenditure'), C('other-expenses'), computePAR(), computeGrantSummary(), C('mobilizer-register')]);
+  const HELD = await heldLoad(); const members = HELD.fm(members0), contrib = HELD.fc(contrib0);
   let outstanding = 0, interest = 0;
   for (const l of loans) {
     if (l.status === 'Written Off') continue;
@@ -3253,6 +3261,7 @@ async function dbOverviewHtml() {
     dbCard('Partly paid shares', dbKes(partShare), partCnt + ' member' + (partCnt === 1 ? '' : 's') + ' still completing KES 1,000', '', '◐') +
     dbCard('Registration fees', dbKes(regFees), 'Spent ' + dbKes(spent) + ' · left ' + dbKes(regFees - spent), '', '🧾') +
     dbCard('Net contribution', dbKes(net), 'Shares + savings − other expenses − loans', '', '📈') +
+    (HELD.n ? dbCard('Held – not counted', dbKes(HELD.total), HELD.n + ' member' + (HELD.n === 1 ? '' : 's') + ' not yet verified (Statement import)', 'bad', '⚑') : '') +
     dbCard('M-Pesa to post', inbox.length, dbKes(sumField(inbox, 'amount')) + ' waiting in the inbox', inbox.length ? 'bad' : 'good', '📲') + '</div>' +
     '<h2 class="db-h red">Loans &amp; risk</h2><div class="db-grid">' +
     dbCard('Loans issued', dbKes(issued), loans.length + ' loans', '') +
@@ -5891,6 +5900,11 @@ async function stiOpen() {
       const vr = verList.find(v => v.memberId === m.__id); if (vr && T <= (parseFloat(vr.total) || 0) + 0.5) { nVer++; return; }
       if (!e && T > 0) flagNo.push({ m, reg, cap, cs, T, S: 0 }); else if (e && T > e.S + 0.5) flagMore.push({ m, reg, cap, cs, T, S: e.S }); });
     const flagAll = flagNo.concat(flagMore);
+    try {
+      const holdNow = await getCollectionEntriesWithId('tablebanking', 'stmt-hold').catch(() => []); const want = new Map(flagAll.map(f => [f.m.__id, f])); const hc = db.collection(storageKey('tablebanking', 'stmt-hold'));
+      for (const h of holdNow) if (!want.has(h.__id)) await hc.doc(h.__id).delete();
+      for (const [id, f] of want) { const cur = holdNow.find(h => h.__id === id); if (!cur || Math.abs((parseFloat(cur.total) || 0) - f.T) > 0.5) await hc.doc(id).set({ memberId: id, member: f.m.memberName, total: f.T, statement: f.S || 0, date: new Date().toISOString().slice(0, 10) }); }
+    } catch (x) { console.warn('hold sync', x); }
     flagNo.sort((a, b) => b.T - a.T); flagMore.sort((a, b) => (b.T - b.S) - (a.T - a.S));
     const flagRow = (f, more) => '<div style="background:#fff;border:1px solid #e6a700;border-radius:10px;padding:7px 10px;margin:4px 0;font-size:13px"><label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" data-fv="' + f.m.__id + '" style="margin-top:3px"><span style="flex:1"><b>' + escHtml(f.m.memberName) + '</b> <span style="color:#555;font-size:12px">' + escHtml(f.m.memberNumber || '') + '</span> <span style="color:#b26a00;font-weight:700;font-size:12px">⚑ ' + (more ? 'system more than statement' : 'not on statement') + '</span><div style="font-size:12.5px">' + (more ? 'Statement ' + fmtKES(f.S) + ' · ' : '') + 'System total <b>' + fmtKES(f.T) + '</b> = reg fee ' + fmtKES(f.reg) + ' + share capital ' + fmtKES(f.cap) + ' + contributions ' + fmtKES(f.cs) + (more ? ' · <b>' + fmtKES(f.T - f.S) + ' not on statement</b>' : '') + '</div></span></label></div>';
     const unm = pay.filter(p => !p.m && !p.done && !p.other), oth = pay.filter(p => p.other && !p.done);
@@ -5946,6 +5960,28 @@ async function stiOpen() {
     };
   }
   build();
+}
+// ---- Print button on every staff screen ----
+function printCurrentView() {
+  const se = getSession(); if (!se || se.role === 'member') return;
+  let root = null, title = 'Report';
+  const ovs = [...document.body.children].filter(e => e.tagName === 'DIV' && e.id !== 'printFab' && getComputedStyle(e).position === 'fixed' && (parseInt(getComputedStyle(e).zIndex) || 0) >= 9500 && e.offsetHeight > 200);
+  if (ovs.length) { root = ovs[ovs.length - 1].cloneNode(true); const hd = root.firstElementChild; if (hd && hd.querySelector('button')) { title = (hd.querySelector('b') || hd).textContent.replace(/Close/i, '').trim() || title; hd.remove(); } }
+  else if (document.getElementById('dashboardView') && getComputedStyle(document.getElementById('dashboardView')).display !== 'none') { title = ({ overview: 'Overview', trends: 'Trends', ward: 'Ward Groups' })[dbView] || 'Overview'; root = document.getElementById('dbBody').cloneNode(true); }
+  else { const w = document.createElement('div'); title = ((document.getElementById('recordTitle') || {}).textContent || 'Records').trim(); ['statsRow', 'groupSavingsSection', 'shareOutSection', 'entriesContent'].forEach(id => { const el = document.getElementById(id); if (el && el.offsetHeight) { const c = el.cloneNode(true); c.style.display = 'block'; w.appendChild(c); } }); root = w; }
+  root.querySelectorAll('button, datalist, script, style, .noprint, [data-v], summary i').forEach(e => e.remove());
+  root.querySelectorAll('input, select, textarea').forEach(e => { if (e.type === 'checkbox' || e.type === 'radio') { const t = document.createElement('span'); t.textContent = e.checked ? '☑' : '☐'; e.replaceWith(t); } else { const t = document.createElement('span'); t.textContent = e.tagName === 'SELECT' ? ((e.options[e.selectedIndex] || {}).text || '') : e.value; e.replaceWith(t); } });
+  root.querySelectorAll('[style]').forEach(e => { e.style.position = e.style.position === 'fixed' || e.style.position === 'sticky' ? 'static' : e.style.position; e.style.maxHeight = ''; e.style.overflow = 'visible'; });
+  if (root.style) { root.style.position = 'static'; root.style.overflow = 'visible'; root.style.background = '#fff'; }
+  openPrintWindow(title, root.outerHTML);
+}
+function printFabSetup() {
+  const se = getSession(); const old = document.getElementById('printFab');
+  if (!se || se.role === 'member') { if (old) old.remove(); return; }
+  if (old) return;
+  const b = document.createElement('button'); b.type = 'button'; b.id = 'printFab'; b.textContent = '🖨 Print'; b.setAttribute('aria-label', 'Print this screen');
+  b.style.cssText = 'position:fixed;left:12px;bottom:14px;z-index:100000;padding:11px 16px;border:none;border-radius:26px;background:#1b5e20;color:#fff;font-weight:800;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.4)';
+  b.addEventListener('click', printCurrentView); document.body.appendChild(b);
 }
 async function cardBulk() {
   if (!cardAllowed()) return;
@@ -6062,6 +6098,7 @@ function cardLoginSetup() {
 document.addEventListener('DOMContentLoaded', cardLoginSetup); cardLoginSetup();
 function cardNavSetup() {
   const nav0 = document.getElementById('viewNav');
+  printFabSetup();
   if (nav0 && getSession() && !document.getElementById('pwNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'pwNavBtn'; b.textContent = '🔑 My password'; b.style.cssText = 'flex:0 0 auto;background:#37474f!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', pwChangeOpen); nav0.appendChild(b); }
   const nav = document.getElementById('viewNav'); if (!nav || !cardAllowed()) return;
   [['idcNavBtn', '🪪 ID Cards', '#1565c0', idcOpen], ['crqNavBtn', '🪪 Card requests', '#ef6c00', crqOpen], ['attNavBtn', '📋 Attendance', '#6a1b9a', attOpen], ['scanNavBtn', '📷 Scan card', '#00695c', scanProfileOpen]].forEach(a => {
@@ -6925,15 +6962,16 @@ async function updateGroupSavings() {
   const myRun = ++groupSavingsRunId;
 
   if (currentCategory === 'tablebanking') {
-    const [tbContrib, tbLoans, tbRepay, tbFines, tbMembers, tbExpenditure, tbOtherExpenses] = await Promise.all([
+    const [tbContrib0, tbLoans, tbRepay, tbFines, tbMembers0, tbExpenditure, tbOtherExpenses] = await Promise.all([
       getCollectionEntries('tablebanking', 'contribution-record'),
       getCollectionEntriesWithId('tablebanking', 'loan-issued'),
       getCollectionEntries('tablebanking', 'loan-repayment'),
       getCollectionEntries('tablebanking', 'fines-penalties'),
-      getCollectionEntries('tablebanking', 'member-register'),
+      getCollectionEntriesWithId('tablebanking', 'member-register'),
       getCollectionEntries('tablebanking', 'expenditure'),
       getCollectionEntries('tablebanking', 'other-expenses'),
     ]);
+    const HELD2 = await heldLoad(); const tbMembers = HELD2.fm(tbMembers0), tbContrib = HELD2.fc(tbContrib0);
 
     const tbTotalContrib = sumField(tbContrib, 'amount');
     const tbTotalLoans = sumField(tbLoans, 'loanAmount');
@@ -6992,6 +7030,7 @@ async function updateGroupSavings() {
       ['Fines Collected', tbTotalFines, 'kes'],
       ['Total Money Spent (Expenditure)', tbTotalExpenditure, 'kes'],
       ['Registration Fund Balance (Reg. Fees − Expenditure)', tbRegFundBalance, 'kes'],
+      ...(HELD2.n ? [['⚑ Held – not counted above (' + HELD2.n + ' members not yet verified)', HELD2.total, 'kes']] : []),
       ['Total Other Expenses (from share capital ' + fmtKES(tbFromShares) + ' · from savings ' + fmtKES(tbFromSavings) + ')', tbTotalOtherExpenses, 'kes'],
       ['Savings + Share Capital Balance (After Other Expenses)', tbCombinedSavingsShareBalance, 'kes'],
       ['SACCO Banking Records Fund Balance', tbFundBalance, 'kes'],
