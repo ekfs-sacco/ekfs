@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BA</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BC</span></p>
   </div>
 </div>
 
@@ -5847,7 +5847,7 @@ async function stiOpen() {
   const tok = s => new Set(String(s || '').toLowerCase().replace(/[^a-z ]/g, '').split(/\s+/).filter(w => w.length > 1));
   async function build() {
     body.innerHTML = 'Reading the system…';
-    const [members, contribAll, ledger, al] = await Promise.all([getCollectionEntriesWithId('tablebanking', 'member-register'), getCollectionEntriesWithId('tablebanking', 'contribution-record', true), getCollectionEntriesWithId('tablebanking', 'stmt-posted').catch(() => []), aliasLoad()]);
+    const [members, contribAll, ledger, al, verList] = await Promise.all([getCollectionEntriesWithId('tablebanking', 'member-register'), getCollectionEntriesWithId('tablebanking', 'contribution-record', true), getCollectionEntriesWithId('tablebanking', 'stmt-posted').catch(() => []), aliasLoad(), getCollectionEntriesWithId('tablebanking', 'stmt-verified').catch(() => [])]);
     const contrib = contribAll.filter(c => c.contributionType !== 'Other amount');
     const act = members.filter(m => !m.status || m.status === 'Active');
     const byPh = {}; act.forEach(m => { const k = l9(m.contact); if (k.length === 9) (byPh[k] = byPh[k] || []).push(m); });
@@ -5886,15 +5886,18 @@ async function stiOpen() {
       if (e.post > 0.5) out.push(e);
     });
     out.sort((a, b) => (a.risky - b.risky) || a.m.memberName.localeCompare(b.m.memberName));
-    const flagNo = [], flagMore = [];
+    const flagNo = [], flagMore = []; let nVer = 0;
     act.forEach(m => { const nm = nmKey(m.memberName), mine = contrib.filter(c => nmKey(c.memberName) === nm); const reg = parseFloat(m.registrationFee) || 0, cap = parseFloat(m.shareCapital) || 0, cs = mine.reduce((a, c) => a + (parseFloat(c.amount) || 0), 0), T = reg + cap + cs; const e = per[m.__id];
-      if (!e && T > 0) flagNo.push({ m, reg, cap, cs, T }); else if (e && T > e.S + 0.5) flagMore.push({ m, reg, cap, cs, T, S: e.S }); });
+      const vr = verList.find(v => v.memberId === m.__id); if (vr && T <= (parseFloat(vr.total) || 0) + 0.5) { nVer++; return; }
+      if (!e && T > 0) flagNo.push({ m, reg, cap, cs, T, S: 0 }); else if (e && T > e.S + 0.5) flagMore.push({ m, reg, cap, cs, T, S: e.S }); });
+    const flagAll = flagNo.concat(flagMore);
     flagNo.sort((a, b) => b.T - a.T); flagMore.sort((a, b) => (b.T - b.S) - (a.T - a.S));
     const flagRow = (f, more) => '<div style="background:#fff;border:1px solid #e6a700;border-radius:10px;padding:7px 10px;margin:4px 0;font-size:13px"><b>' + escHtml(f.m.memberName) + '</b> <span style="color:#555;font-size:12px">' + escHtml(f.m.memberNumber || '') + '</span> <span style="color:#b26a00;font-weight:700;font-size:12px">⚑ ' + (more ? 'system more than statement' : 'not on statement') + '</span><div style="font-size:12.5px">' + (more ? 'Statement ' + fmtKES(f.S) + ' · ' : '') + 'System total <b>' + fmtKES(f.T) + '</b> = reg fee ' + fmtKES(f.reg) + ' + share capital ' + fmtKES(f.cap) + ' + contributions ' + fmtKES(f.cs) + (more ? ' · <b>' + fmtKES(f.T - f.S) + ' not on statement</b>' : '') + '</div></div>';
     const unm = pay.filter(p => !p.m && !p.done && !p.other), oth = pay.filter(p => p.other && !p.done);
     const doneN = pay.filter(p => p.done).length, tot = out.reduce((a, e) => a + e.post, 0);
     const dl = '<datalist id="stDl"><option value="Other amount (reference only)"></option>' + act.slice().sort((a, b) => String(a.memberNumber).localeCompare(String(b.memberNumber), undefined, { numeric: true })).map(m => '<option value="' + escHtml((m.memberNumber || '') + ' · ' + (m.memberName || '')) + '"></option>').join('') + '</datalist>';
     body.innerHTML = '<div style="background:#fff;border:1px solid #d5ddd5;border-radius:10px;padding:10px;font-size:13.5px"><b>' + pay.length + '</b> payments with M-Pesa codes read · <b>' + doneN + '</b> already on the system · <b>' + out.length + '</b> members have money to post (<b>' + fmtKES(tot) + '</b>) · <b>' + unm.length + '</b> payments have no member yet<div style="color:#555;margin-top:4px">Rule for each member: statement total minus what the system already holds. The extra is posted as <b>KES ' + STI_FEE + ' registration fee</b>, then <b>KES ' + STI_SHARE + ' share capital</b> (only if still short), then <b>savings</b> dated on the payment date. Nothing is posted until you press Post.</div><label style="display:block;margin-top:6px"><input type="checkbox" id="stSim" ' + (incSimba ? 'checked' : '') + '> Include the old Simba account (Nov 2024 – Feb 2025)</label></div>' +
+      '<button type="button" id="stAll" style="width:100%;padding:13px;border:none;border-radius:10px;background:#c62828;color:#fff;font-weight:800;font-size:15px;margin-top:10px">⚡ Match everything now (post all + leftovers to Other amount)</button>' +
       '<h3 style="margin:12px 0 4px;color:#1b5e20">1. To post (' + out.length + ')</h3><div style="font-size:12px;color:#777;margin-bottom:4px">Ticked = looks safe (matched by phone or remembered name). Unticked = please check first (matched by name only, chosen by you, or more than KES 5,000).</div>' +
       (out.map((e, i) => '<div style="background:#fff;border:1px solid ' + (e.risky ? '#e6a700' : '#d5ddd5') + ';border-radius:10px;padding:8px 10px;margin:5px 0"><label style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" data-i="' + i + '" ' + (e.sel ? 'checked' : '') + ' style="margin-top:4px"><span style="flex:1"><b>' + escHtml(e.m.memberName) + '</b> <span style="color:#555;font-size:12px">' + escHtml(e.m.memberNumber || '') + '</span>' + (e.risky ? ' <span style="color:#b26a00;font-weight:700;font-size:12px">check</span>' : '') + '<div style="font-size:12.5px">Statement ' + fmtKES(e.S) + ' · System ' + fmtKES(e.T) + ' → post <b>' + fmtKES(e.post) + '</b>: fee ' + fmtKES(e.fee) + ' · share ' + fmtKES(e.share) + ' · savings ' + fmtKES(e.sav) + '</div><div style="font-size:11.5px;color:#777">' + e.lines.map(l => l.p.date + ' ' + l.p.amount + ' ' + l.p.code + ' (' + l.p.how + (l.p.src === 'simba' ? ', Simba' : '') + ')').join(' · ') + '</div></span></label></div>').join('') || '<div style="padding:12px;color:#777">Nothing to post.</div>') +
       '<button type="button" id="stPost" class="btn-primary" style="width:100%;padding:12px;font-size:15px;margin-top:8px">Post ticked members</button><div id="stMsg" style="margin:6px 0;font-weight:700;color:#1b5e20"></div>' +
@@ -5903,15 +5906,18 @@ async function stiOpen() {
       (oth.length ? '<h3 style="margin:12px 0 4px;color:#7b1fa2">Other amount — reference only (' + oth.length + ' · ' + fmtKES(oth.reduce((a, p) => a + p.amount, 0)) + ')</h3><div style="font-size:12px;color:#777">Kept as a private record that is never added to any member or report.</div>' + oth.map(p => '<div style="font-size:12.5px;padding:3px 0">' + escHtml(p.payer || p.phone) + ' · ' + fmtKES(p.amount) + ' · ' + p.date + ' · ' + p.code + '</div>').join('') + '<button type="button" id="stOth" style="width:100%;padding:11px;border:none;border-radius:10px;background:#7b1fa2;color:#fff;font-weight:800;margin-top:6px">Record these as Other amount</button>' : '') +
       '<h3 style="margin:14px 0 4px;color:#b26a00">3. ⚑ On the system but NOT on the statement (' + flagNo.length + ' · ' + fmtKES(flagNo.reduce((a, f) => a + f.T, 0)) + ')</h3><div style="font-size:12px;color:#777;margin-bottom:4px">No statement payment found for these members, but the system shows money. Check the receipt book or ask the member: cash, another phone, or a wrong entry.</div>' + (flagNo.map(f => flagRow(f, false)).join('') || '<div style="color:#777">None.</div>') +
       '<h3 style="margin:14px 0 4px;color:#b26a00">4. ⚑ System has MORE than the statement (' + flagMore.length + ' · ' + fmtKES(flagMore.reduce((a, f) => a + f.T - f.S, 0)) + ')</h3>' + (flagMore.map(f => flagRow(f, true)).join('') || '<div style="color:#777">None.</div>') +
+      '<div style="margin-top:10px;font-size:12.5px;color:#555">Verified so far (kept and counted): <b>' + nVer + '</b></div>' + (flagAll.length ? '<button type="button" id="stVer" style="width:100%;padding:12px;border:none;border-radius:10px;background:#b26a00;color:#fff;font-weight:800;margin-top:6px">✔ Mark all ' + flagAll.length + ' flagged members as verified (cash / other channel)</button><div style="font-size:12px;color:#777;margin-top:3px">Nothing is deleted or reduced. Their money stays counted; they just stop being flagged. They are flagged again if their system total later goes up.</div>' : '') + (nVer ? '<button type="button" id="stUnver" style="width:100%;padding:9px;border:none;border-radius:10px;background:#eee;font-weight:700;margin-top:6px">Clear all verifications</button>' : '') +
       (unm.length ? '<button type="button" id="stApply" style="width:100%;padding:11px;border:none;border-radius:10px;background:#1565c0;color:#fff;font-weight:800;margin-top:6px">Apply choices</button>' : '');
     ov.querySelector('#stSim').onchange = ev => { incSimba = ev.target.checked; build(); };
     const ap = ov.querySelector('#stApply'); if (ap) ap.onclick = () => { ov.querySelectorAll('input[data-c]').forEach(s => { const v = s.value.trim().toLowerCase(); if (!v) return; if (v.startsWith('other')) { manual[s.dataset.c] = '__other'; return; } const hit = act.find(m => ((m.memberNumber || '') + ' · ' + (m.memberName || '')).toLowerCase() === v || String(m.memberNumber || '').toLowerCase() === v || String(m.memberName || '').toLowerCase() === v); if (hit) manual[s.dataset.c] = hit.__id; }); build(); };
     ov.querySelectorAll('input[data-i]').forEach(c => c.onchange = () => { out[+c.dataset.i].sel = c.checked; });
+    const sv = ov.querySelector('#stVer'); if (sv) sv.onclick = async () => { if (!confirm('Mark ' + flagAll.length + ' members as verified (cash / other channel)? Nothing is changed or deleted.')) return; sv.disabled = true; try { for (const f of flagAll) { await db.collection(storageKey('tablebanking', 'stmt-verified')).doc(f.m.__id).set({ memberId: f.m.__id, member: f.m.memberName, total: f.T, statement: f.S || 0, note: 'Cash / other channel', date: new Date().toISOString().slice(0, 10), by: se.username }); } auditLog('statement import', 'stmt-verified', '', flagAll.length + ' members verified'); } catch (x) { alert('Could not save. Check your internet and try again.'); } build(); };
+    const su = ov.querySelector('#stUnver'); if (su) su.onclick = async () => { if (!confirm('Clear all verifications? Members will be flagged again.')) return; for (const v of verList) { try { await db.collection(storageKey('tablebanking', 'stmt-verified')).doc(v.__id).delete(); } catch (x) {} } build(); };
     const so = ov.querySelector('#stOth'); if (so) so.onclick = async () => { if (!confirm('Record ' + oth.length + ' payment(s) as Other amount (Admin reference only)?')) return; for (const p of oth) { await db.collection(storageKey('tablebanking', 'contribution-record')).add({ date: p.date, memberName: p.payer || p.phone, contributionType: 'Other amount', amount: p.amount, mpesaRef: p.code }); } auditLog('statement import', 'contribution-record', '', oth.length + ' payments as Other amount'); build(); };
-    ov.querySelector('#stPost').onclick = async () => {
-      const chosen = out.filter(e => e.sel); const sum = chosen.reduce((a, e) => a + e.post, 0);
+    const doPost = async (chosen, ask) => {
+      const sum = chosen.reduce((a, e) => a + e.post, 0);
       if (!chosen.length) { alert('Tick at least one member.'); return; }
-      if (!confirm('Post ' + fmtKES(sum) + ' for ' + chosen.length + ' member(s)?\n\nThis adds registration fees, share capital and savings records. It can be corrected afterwards in the records, but please check the list first.')) return;
+      if (ask && !confirm('Post ' + fmtKES(sum) + ' for ' + chosen.length + ' member(s)?\n\nThis adds registration fees, share capital and savings records. It can be corrected afterwards in the records, but please check the list first.')) return;
       const msg = ov.querySelector('#stMsg'); const tb = r => db.collection(storageKey('tablebanking', r)); let n = 0, fails = 0;
       for (const e of chosen) {
         msg.textContent = 'Posting ' + (++n) + ' of ' + chosen.length + '…';
@@ -5929,6 +5935,13 @@ async function stiOpen() {
         } catch (x) { console.warn(x); fails++; }
       }
       alert('Done. Posted for ' + (chosen.length - fails) + ' member(s)' + (fails ? '; ' + fails + ' failed, please run it again (finished ones are not repeated).' : '.')); build();
+    };
+    ov.querySelector('#stPost').onclick = () => doPost(out.filter(e => e.sel), true);
+    const sa = ov.querySelector('#stAll'); if (sa) sa.onclick = async () => {
+      const big = out.filter(e => e.post > 5000).map(e => e.m.memberName + ' ' + fmtKES(e.post)).join(', ');
+      if (!confirm('MATCH EVERYTHING?\n\n• Post ' + fmtKES(tot) + ' for ' + out.length + ' member(s) (fee, share, savings)\n• Record ' + unm.length + ' unmatched payment(s) (' + fmtKES(unm.reduce((a, p) => a + p.amount, 0)) + ') as Other amount' + (big ? '\n\nLarge amounts: ' + big + '. Check these are really their own savings.' : '') + '\n\nContinue?')) return;
+      try { for (const p of unm) { await db.collection(storageKey('tablebanking', 'contribution-record')).add({ date: p.date, memberName: p.payer || p.phone, contributionType: 'Other amount', amount: p.amount, mpesaRef: p.code }); } if (unm.length) auditLog('statement import', 'contribution-record', '', unm.length + ' unmatched payments as Other amount'); } catch (x) { alert('Could not record the unmatched payments. Check your internet and try again.'); return; }
+      await doPost(out, false);
     };
   }
   build();
