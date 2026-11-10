@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BF</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BJ</span></p>
   </div>
 </div>
 
@@ -2231,6 +2231,7 @@ async function buildForm() {
     if (!document.getElementById('regFormBtn')) { const rb = document.createElement('button'); rb.type = 'button'; rb.id = 'regFormBtn'; rb.className = 'btn-primary btn-small'; rb.textContent = '🖨 Print blank registration form'; rb.style.cssText = 'grid-column:1/-1;justify-self:start;margin:4px 0 8px;'; rb.onclick = () => printRegForm(null); formFields.insertBefore(rb, formFields.firstChild); }
     ['memberNumber', 'memberName', 'sex', 'dateJoined'].forEach(k => { const el = document.getElementById('field_' + k); if (el) { el.required = true; const lb = el.parentNode && el.parentNode.querySelector('label'); if (lb && !/\*/.test(lb.textContent)) lb.textContent += ' *'; } });
   }
+  regPrintBarSync();
   if (currentCategory === 'tablebanking' && currentRecord === 'portfolio-review') wirePortfolioReviewAutoFill();
   if (currentCategory === 'tablebanking' && currentRecord === 'credit-appraisal') wireAppraisalAutoFill();
   if (currentCategory === 'tablebanking' && (currentRecord === 'loan-recovery' || currentRecord === 'loan-restructure')) recWireForm();
@@ -2564,6 +2565,27 @@ function wireContributionAutoFill() {
   if (!memberSelect || !amountInput) return;
   memberSelect.addEventListener('change', recalcRunningBalance);
   amountInput.addEventListener('input', recalcRunningBalance);
+  const tsel = document.getElementById('field_contributionType');
+  if (tsel) {
+    const sync = () => {
+      let t = document.getElementById('otherPayer');
+      const on = tsel.value === 'Other amount';
+      if (on && !t) {
+        t = document.createElement('input'); t.type = 'text'; t.id = 'otherPayer';
+        t.placeholder = 'Payer name / member no. / M-Pesa name (type anything)';
+        t.className = memberSelect.className; t.style.cssText = memberSelect.style.cssText;
+        t.setAttribute('list', 'otherPayerList');
+        const dl = document.createElement('datalist'); dl.id = 'otherPayerList';
+        Array.from(memberSelect.options).forEach(o => { if (o.value) { const x = document.createElement('option'); x.value = o.value; dl.appendChild(x); } });
+        memberSelect.parentNode.insertBefore(dl, memberSelect.nextSibling);
+        memberSelect.parentNode.insertBefore(t, memberSelect.nextSibling);
+      }
+      if (t) { t.style.display = on ? '' : 'none'; if (!on) t.value = ''; }
+      memberSelect.style.display = on ? 'none' : '';
+      recalcRunningBalance();
+    };
+    tsel.addEventListener('change', sync); sync();
+  }
 }
 
 function buildTableHead() {
@@ -2820,6 +2842,12 @@ entryForm.addEventListener('submit', (e) => {
     const input = document.getElementById('field_' + f.key);
     data[f.key] = input.value;
   });
+  if (currentRecord === 'contribution-record' && data.contributionType === 'Other amount') {
+    const op = document.getElementById('otherPayer');
+    if (op && op.value.trim()) data.memberName = op.value.trim();
+    if (!String(data.memberName || '').trim()) { alert('Type the payer name (or member number) for this Other amount entry.'); return; }
+    if (!(parseFloat(data.amount) > 0)) { alert('Enter the amount for this Other amount entry.'); return; }
+  }
   if (currentCategory === 'tablebanking' && currentRecord === 'member-register') {
     if (!String(data.memberNumber || '').trim() && !editingRowId && !window.__numRetry) { window.__numRetry = true; generateMemberNumber().then(() => { window.__numRetry = false; entryForm.requestSubmit(); }).catch(() => { window.__numRetry = false; }); return; }
     const miss = [['memberNumber', 'Member Number'], ['memberName', 'Member Name'], ['sex', 'Sex'], ['dateJoined', 'Date Joined']].filter(([k]) => !String(data[k] || '').trim()).map(x => x[1]);
@@ -3504,6 +3532,49 @@ async function printMemberPortal() {
   const clone = c.cloneNode(true);
   clone.querySelectorAll('#memberPrintBtn').forEach(b => b.remove());
   openPrintWindow('Member Statement', pbStamp() + clone.innerHTML);
+}
+
+// ===== Member Register: print by registration status =====
+const REG_FEE = 200, REG_SHARE = 1000;
+function regStatusOf(m) {
+  const fee = parseFloat(m.registrationFee) || 0, sh = parseFloat(m.shareCapital) || 0;
+  if (fee >= REG_FEE && sh >= REG_SHARE) return 'full';
+  if (fee >= REG_FEE && sh > 0) return 'partial';
+  if (fee >= REG_FEE) return 'feeonly';
+  if (sh > 0 || fee > 0) return 'partial';
+  return 'none';
+}
+const REG_LABELS = { all: 'All members', full: 'Fully registered (fee + full share KES 1,000)', partial: 'Partially registered (fee + part of share)', feeonly: 'Fee only (KES 200 paid, no share)', none: 'Nothing paid yet' };
+async function regPrintList(kind) {
+  let rows = (await getCollectionEntriesWithId('tablebanking', 'member-register')).filter(r => !r.status || r.status === 'Active');
+  rows.sort((a, b) => extractMemberNum(a.memberNumber) - extractMemberNum(b.memberNumber));
+  const counts = { full: 0, partial: 0, feeonly: 0, none: 0 };
+  rows.forEach(r => counts[regStatusOf(r)]++);
+  const sel = kind === 'all' ? rows : rows.filter(r => regStatusOf(r) === kind);
+  const sumF = sel.reduce((a, r) => a + (parseFloat(r.registrationFee) || 0), 0), sumS = sel.reduce((a, r) => a + (parseFloat(r.shareCapital) || 0), 0);
+  const hdr = ['No.', 'Member No.', 'Name', 'Sex', 'ID No.', 'Phone', 'CIG', 'Reg. fee', 'Share capital'].concat(kind === 'all' ? ['Status'] : []);
+  const short = { full: 'Full', partial: 'Partial', feeonly: 'Fee only', none: 'None' };
+  const body = sel.map((r, i) => [String(i + 1), r.memberNumber, r.memberName, r.sex, r.idNo, r.contact, r.cigName, r.registrationFee, r.shareCapital].concat(kind === 'all' ? [short[regStatusOf(r)]] : []).map(v => v == null ? '' : v));
+  openPrintWindow('Member Register — ' + REG_LABELS[kind],
+    '<style>@page{size:A4 landscape;margin:10mm}table{font-size:11px}</style><h2>Member Register — ' + escHtml(REG_LABELS[kind]) + '</h2>' + pbStamp() +
+    '<p style="font-size:12px">Active members: ' + rows.length + ' · Full: ' + counts.full + ' · Partial: ' + counts.partial + ' · Fee only: ' + counts.feeonly + ' · Nothing paid: ' + counts.none + '</p>' +
+    pbTable(hdr, body) + '<p><b>Listed: ' + sel.length + ' member' + (sel.length === 1 ? '' : 's') + ' · Reg. fees KES ' + sumF.toLocaleString() + ' · Share capital KES ' + sumS.toLocaleString() + '</b></p>' +
+    '<div class="sig"><div>Prepared by</div><div>Chairperson</div><div>Treasurer</div></div>');
+}
+function regPrintBarSync() {
+  const old = document.getElementById('regPrintBar');
+  const on = currentCategory === 'tablebanking' && currentRecord === 'member-register';
+  if (!on) { if (old) old.remove(); return; }
+  if (old) return;
+  const ec = document.getElementById('entriesContent'); if (!ec) return;
+  const bar = document.createElement('div'); bar.id = 'regPrintBar';
+  bar.style.cssText = 'box-sizing:border-box;width:100%;max-width:calc(100vw - 24px);position:sticky;left:0;display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0;padding:8px;border:1px solid #cfd8dc;border-radius:8px;background:#f5faf6;';
+  bar.innerHTML = '<b style="font-size:13px">🖨 Print register:</b><select id="regPrintSel" style="flex:1;min-width:190px;padding:8px;border-radius:6px;">' +
+    Object.keys(REG_LABELS).map(k => '<option value="' + k + '">' + REG_LABELS[k] + '</option>').join('') + '</select><button type="button" class="btn-primary btn-small" id="regPrintGo">Print</button><span id="regPrintCnt" style="font-size:12px;color:#37474f;width:100%"></span>';
+  const rs = document.getElementById('recordSelect'); if (rs) rs.parentNode.insertBefore(bar, rs.nextSibling); else { const tg = document.getElementById('entriesToggle'); (tg || ec).parentNode.insertBefore(bar, tg || ec); }
+  const cnt = async () => { const rows = (await getCollectionEntriesWithId('tablebanking', 'member-register')).filter(r => !r.status || r.status === 'Active'); const c = { full: 0, partial: 0, feeonly: 0, none: 0 }; rows.forEach(r => c[regStatusOf(r)]++); const e = document.getElementById('regPrintCnt'); if (e) e.textContent = 'Full ' + c.full + ' · Partial ' + c.partial + ' · Fee only ' + c.feeonly + ' · Nothing paid ' + c.none + ' · Total ' + rows.length; };
+  cnt().catch(() => {});
+  document.getElementById('regPrintGo').onclick = () => regPrintList(document.getElementById('regPrintSel').value).catch(e => alert('Could not print: ' + e.message));
 }
 function setupPrintButtons() {
   const nav = document.getElementById('viewNav');
