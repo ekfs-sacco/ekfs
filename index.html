@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BP</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BQ</span></p>
   </div>
 </div>
 
@@ -3743,6 +3743,8 @@ function xlBook(sheets) {
     ['xl/styles.xml', styles]].concat(sh.map((x, i) => ['xl/worksheets/sheet' + (i + 1) + '.xml', x]));
   return xlZip(files);
 }
+function tokNear(a, b) { if (a === b) return true; if (a.length < 5 || b.length < 5 || Math.abs(a.length - b.length) > 1) return false; let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; if (a.length === b.length) return a.slice(i + 1) === b.slice(i + 1) || (a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2)); const [l, sh] = a.length > b.length ? [a, b] : [b, a]; return l.slice(i + 1) === sh.slice(i); }
+function tokCount(t, mt) { let n = 0; t.forEach(w => { let hit = mt.has(w); if (!hit) mt.forEach(x => { if (!hit && tokNear(w, x)) hit = true; }); if (hit) n++; }); return n; }
 function stmtPayMap(DATA, members, al) {
   const l9 = p => String(p || '').replace(/\D/g, '').slice(-9), tok = x => new Set(String(x || '').toLowerCase().replace(/[^a-z ]/g, '').split(/\s+/).filter(w => w.length > 1)), nmKey = n => String(n || '').trim().toLowerCase();
   const act = members.filter(m => !m.status || m.status === 'Active'), byPh = {}; act.forEach(m => { const k = l9(m.contact); if (k.length === 9) (byPh[k] = byPh[k] || []).push(m); });
@@ -3753,7 +3755,7 @@ function stmtPayMap(DATA, members, al) {
     if (!m && r.phone && (byPh[ph] || []).length > 1 && r.src === 'simba') { const ini = (String(r.details || '').trim().slice(-1) || '').toLowerCase(); const h = byPh[ph].filter(x => String(x.memberName || '').trim().toLowerCase().startsWith(ini)); if (ini && h.length === 1) m = h[0]; }
     if (!m && al && r.phone && al.get('PH:' + ph)) m = byNm[nmKey(al.get('PH:' + ph).member)] || null;
     if (!m && al && r.name && aliasUsable(r.name)) { const a = al.get(aliasKey(r.name)); if (a) m = byNm[nmKey(a.member)] || null; }
-    if (!m && r.src === 'coop' && r.name) { const t = tok(r.name); if (t.size >= 2) { const h = act.filter(x => { const mt = tok(x.memberName); let n = 0; t.forEach(w => { if (mt.has(w)) n++; }); return n >= 2; }); if (h.length === 1) m = h[0]; } }
+    if (!m && r.src === 'coop' && r.name) { const t = tok(r.name); if (t.size >= 2) { const h = act.filter(x => tokCount(t, tok(x.memberName)) >= 2); if (h.length === 1) m = h[0]; } }
     return { code: String(r.code).trim().toUpperCase(), date: r.iso, amount: r.credit, payer: r.name || '', phone: r.phone || '', src: r.src === 'simba' ? 'Simba' : 'Co-op', m };
   });
 }
@@ -6157,7 +6159,7 @@ async function stiOpen() {
       if (!m && r.phone && (byPh[l9(r.phone)] || []).length > 1 && r.src === 'simba') { const ini = (String(r.details || '').trim().slice(-1) || '').toLowerCase(); const h = byPh[l9(r.phone)].filter(x => String(x.memberName || '').trim().toLowerCase().startsWith(ini)); if (ini && h.length === 1) { m = h[0]; how = 'phone+initial'; } }
       if (!m && r.phone && al.get('PH:' + l9(r.phone))) { const a = al.get('PH:' + l9(r.phone)); m = byNm[nmKey(a.member)] || null; if (m) how = 'remembered'; }
       if (!m && r.name && aliasUsable(r.name)) { const a = al.get(aliasKey(r.name)); if (a) { m = byNm[nmKey(a.member)] || null; if (m) how = 'remembered'; } }
-      if (!m && r.src === 'coop' && r.name) { const t = tok(r.name); if (t.size >= 2) { const h = act.filter(x => { const mt = tok(x.memberName); let n = 0; t.forEach(w => { if (mt.has(w)) n++; }); return n >= 2; }); if (h.length === 1) { m = h[0]; how = 'name'; } } }
+      if (!m && r.src === 'coop' && r.name) { const t = tok(r.name); if (t.size >= 2) { const h = act.filter(x => tokCount(t, tok(x.memberName)) >= 2); if (h.length === 1) { m = h[0]; how = 'name'; } } }
       return { code, date: r.iso, amount: r.credit, payer: r.name || '', phone: r.phone || '', src: r.src, m, how, done: recorded.has(code) };
     });
     const per = {};
