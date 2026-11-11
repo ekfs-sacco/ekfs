@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BL</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BM</span></p>
   </div>
 </div>
 
@@ -3632,6 +3632,7 @@ function ntSet(id, base, n) { const b = document.getElementById(id); if (!b) ret
 async function ntPoll() {
   const se = getSession(); if (!se || !['admin', 'chairperson', 'official', 'bookkeeper'].includes(se.role)) return;
   try {
+    if (document.getElementById('dpNavBtn') && ntLast.dp === undefined) { ntLast.dp = 1; dpLoad().then(r => ntSet('dpNavBtn', '🔍 Duplicates', r.open.filter(g => g.w >= 2).length)).catch(() => {}); }
     if (document.getElementById('crqNavBtn')) {
       const rows = await getCollectionEntries('tablebanking', 'card-request'); const n = rows.filter(r => r.status === 'Submitted').length;
       ntSet('crqNavBtn', '🪪 Card requests', n); if (ntLast.crq !== null && n > ntLast.crq) ntToast('🪪 New card request received'); ntLast.crq = n;
@@ -3644,6 +3645,46 @@ async function ntPoll() {
   } catch (e) {}
 }
 setInterval(ntPoll, 30000); setTimeout(ntPoll, 4000); setInterval(() => { if (document.getElementById('crqNavBtn') && !document.getElementById('crqNavBtn').dataset.nt) { document.getElementById('crqNavBtn').dataset.nt = '1'; ntPoll(); } }, 3000);
+
+// ===== Duplicate registration check (Admin) =====
+function dpNorm(x) { return String(x || '').toLowerCase().replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean).sort().join(' '); }
+function dpDice(a, b) { const g = t => { const o = {}; for (let i = 0; i < t.length - 1; i++) { const k = t.substr(i, 2); o[k] = (o[k] || 0) + 1; } return o; }, A = g(a), B = g(b); let n = 0; Object.keys(A).forEach(k => { if (B[k]) n += Math.min(A[k], B[k]); }); return a.length + b.length < 2 ? 0 : 2 * n / (a.length + b.length - 2); }
+function dpFind(members) {
+  const pairs = {}, add = (a, b, why, w) => { const k = [a.__id, b.__id].sort().join('|'); (pairs[k] = pairs[k] || { a, b, why: [], w: 0 }); if (!pairs[k].why.includes(why)) pairs[k].why.push(why); pairs[k].w = Math.max(pairs[k].w, w); };
+  const by = {}; const put = (k, m) => { (by[k] = by[k] || []).push(m); };
+  members.forEach(m => { const id = String(m.idNo || '').replace(/\D/g, ''), ph = String(m.contact || '').replace(/\D/g, '').slice(-9), nm = dpNorm(m.memberName); if (id.length >= 6) put('I' + id, m); if (ph.length === 9) put('P' + ph, m); if (nm) put('N' + nm, m); });
+  Object.keys(by).forEach(k => { const v = by[k]; if (v.length < 2) return; for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) { if (k[0] === 'I') add(v[i], v[j], 'Same ID number', 3); else if (k[0] === 'N') add(v[i], v[j], 'Same name', 3); else add(v[i], v[j], 'Same phone', 1); } });
+  const ns = members.map(m => [dpNorm(m.memberName), m]).filter(x => x[0]);
+  for (let i = 0; i < ns.length; i++) for (let j = i + 1; j < ns.length; j++) if (ns[i][0] !== ns[j][0] && dpDice(ns[i][0], ns[j][0]) >= 0.85) add(ns[i][1], ns[j][1], 'Very similar name', 2);
+  // merge pairs into groups
+  const par = {}; const f = x => par[x] === undefined || par[x] === x ? (par[x] = x) : (par[x] = f(par[x]));
+  Object.values(pairs).forEach(p => { par[f(p.a.__id)] = f(p.b.__id); });
+  const groups = {}; Object.values(pairs).forEach(p => { const r = f(p.a.__id); const g = (groups[r] = groups[r] || { ms: {}, why: [], w: 0 }); g.ms[p.a.__id] = p.a; g.ms[p.b.__id] = p.b; p.why.forEach(w => { if (!g.why.includes(w)) g.why.push(w); }); g.w = Math.max(g.w, p.w); });
+  return Object.values(groups).map(g => ({ ms: Object.values(g.ms), why: g.why, w: g.w, sig: Object.keys(g.ms).sort().join('|') })).sort((a, b) => b.w - a.w || a.ms[0].memberName.localeCompare(b.ms[0].memberName));
+}
+async function dpLoad() {
+  const members = (await getCollectionEntriesWithId('tablebanking', 'member-register')); let rev = [];
+  try { rev = await getCollectionEntriesWithId('tablebanking', 'dup-reviewed'); } catch (e) {}
+  const seen = new Set(rev.map(r => r.sig)); const all = dpFind(members);
+  return { all, open: all.filter(g => !seen.has(g.sig)), rev };
+}
+async function dpOpen() {
+  const se = getSession(); if (!se || !['admin', 'chairperson', 'official'].includes(se.role)) { alert('Only Admin, Chairperson or Official can check duplicates.'); return; }
+  const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#f4f6f4;z-index:9500;overflow:auto;color:#111;';
+  ov.innerHTML = '<div style="position:sticky;top:0;background:#b71c1c;color:#fff;padding:10px;display:flex;justify-content:space-between;align-items:center;z-index:2"><b>🔍 Possible double registrations</b><button type="button" id="dpX" style="padding:6px 12px;border:none;border-radius:8px">Close</button></div><div style="padding:10px;max-width:760px;margin:auto"><div id="dpB">Checking…</div></div>';
+  document.body.appendChild(ov); ov.querySelector('#dpX').onclick = () => { ov.remove(); ntPoll(); };
+  const draw = async () => {
+    const { all, open } = await dpLoad(); const body = ov.querySelector('#dpB');
+    const lbl = g => g.w >= 3 ? ['🔴 Very likely duplicate', '#b71c1c'] : g.w === 2 ? ['🟠 Check — similar name', '#e65100'] : ['🟡 Shared phone only (family?)', '#8a6d00'];
+    const card = g => { const l = lbl(g); return '<div style="background:#fff;border:2px solid ' + l[1] + ';border-radius:10px;padding:9px;margin:8px 0"><div style="font-weight:800;color:' + l[1] + '">' + l[0] + ' — ' + escHtml(g.why.join(', ')) + '</div>' +
+      g.ms.map(m => '<div style="border-top:1px solid #eee;padding:5px 0;font-size:13px"><b>' + escHtml(m.memberName) + '</b> · ' + escHtml(m.memberNumber || '—') + '<br>ID ' + escHtml(m.idNo || '—') + ' · Tel ' + escHtml(m.contact || '—') + ' · ' + escHtml(m.cigName || '') + '<br>Fee KES ' + (m.registrationFee || 0) + ' · Share KES ' + (m.shareCapital || 0) + ' · ' + escHtml(m.status || 'Active') + '</div>').join('') +
+      '<button type="button" data-ok="' + g.sig + '" style="margin-top:6px;padding:8px 11px;border:none;border-radius:8px;background:#2e7d32;color:#fff;font-weight:800">✔ Not a duplicate (hide)</button></div>'; };
+    body.innerHTML = '<div style="background:#fff;border:1px solid #d5ddd5;border-radius:10px;padding:10px;font-size:13px;line-height:1.5"><b>' + open.length + '</b> groups to check (' + all.length + ' found, ' + (all.length - open.length) + ' marked fine). Nothing is deleted or merged — decide with the member, then edit or remove the extra entry yourself. Same phone only is usually family.</div><button type="button" id="dpP" style="margin:8px 0;width:100%;padding:11px;border:none;border-radius:10px;background:#546e7a;color:#fff;font-weight:700">🖨 Print this list</button>' + open.map(card).join('');
+    body.querySelectorAll('[data-ok]').forEach(b => b.onclick = async () => { b.disabled = true; try { await db.collection(storageKey('tablebanking', 'dup-reviewed')).add({ sig: b.dataset.ok, by: (getSession() || {}).username || '', at: new Date().toISOString() }); } catch (e) { alert('Could not save.'); } draw(); });
+    body.querySelector('#dpP').onclick = () => openPrintWindow('Possible double registrations', '<h2>Possible double registrations — ' + open.length + ' groups</h2>' + pbStamp() + open.map(g => '<p><b>' + lbl(g)[0] + '</b> — ' + escHtml(g.why.join(', ')) + '</p>' + pbTable(['Name', 'Member No.', 'ID No.', 'Phone', 'Fee', 'Share', 'Status'], g.ms.map(m => [m.memberName, m.memberNumber, m.idNo, m.contact, m.registrationFee, m.shareCapital, m.status || 'Active']))).join(''));
+  };
+  draw().catch(e => { ov.querySelector('#dpB').textContent = 'Error: ' + e.message; });
+}
 function setupPrintButtons() {
   const nav = document.getElementById('viewNav');
   if (nav && !document.getElementById('printMenuBtn')) {
@@ -6259,6 +6300,7 @@ function cardNavSetup() {
   if ((getSession() || {}).role === 'admin' && !document.getElementById('rcNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'rcNavBtn'; b.textContent = '🛟 Recovery code'; b.style.cssText = 'flex:0 0 auto;background:#b71c1c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', recCodeOpen); nav.appendChild(b); }
   if ((getSession() || {}).role === 'admin' && !document.getElementById('stiNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'stiNavBtn'; b.textContent = '📥 Statement import'; b.style.cssText = 'flex:0 0 auto;background:#1f3864!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', stiOpen); nav.appendChild(b); }
   if ((getSession() || {}).role === 'admin' && !document.getElementById('rnNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'rnNavBtn'; b.textContent = '🔢 Member numbers'; b.style.cssText = 'flex:0 0 auto;background:#4a148c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', rnOpen); nav.appendChild(b); }
+  if (['admin', 'chairperson', 'official'].includes((getSession() || {}).role) && !document.getElementById('dpNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'dpNavBtn'; b.textContent = '🔍 Duplicates'; b.style.cssText = 'flex:0 0 auto;background:#b71c1c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', dpOpen); nav.appendChild(b); }
   { const w = nav.querySelector('[data-v=ward]'); if (w) { let ref = w; ['idcNavBtn', 'crqNavBtn', 'attNavBtn', 'scanNavBtn'].forEach(id => { const b = document.getElementById(id); if (b) { if (ref.nextElementSibling !== b) ref.after(b); ref = b; } }); } }
 }
 function cardFabSetup() {
