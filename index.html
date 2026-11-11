@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BJ</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BL</span></p>
   </div>
 </div>
 
@@ -2300,7 +2300,7 @@ async function generateMemberNumber() {
       if (!isNaN(n) && n > maxNum) maxNum = n;
     }
   });
-  input.value = 'EKFS' + String(maxNum + 1).padStart(3, '0');
+  input.value = 'EKFS-M-' + String(maxNum + 1).padStart(3, '0');
 }
 
 const LOAN_PRODUCTS = {
@@ -3576,6 +3576,74 @@ function regPrintBarSync() {
   cnt().catch(() => {});
   document.getElementById('regPrintGo').onclick = () => regPrintList(document.getElementById('regPrintSel').value).catch(e => alert('Could not print: ' + e.message));
 }
+
+// ===== Renumber members: full → partial → fee only → nothing paid (Admin only) =====
+function rnPlan(members) {
+  // keep each member's own number (digits), only change the format to EKFS-M-###; blanks/duplicates take the free numbers
+  const w = Math.max(3, String(members.length).length), used = new Set(), out = [], todo = [];
+  const byNum = members.slice().sort((a, b) => extractMemberNum(a.memberNumber) - extractMemberNum(b.memberNumber) || String(a.dateJoined || '').localeCompare(String(b.dateJoined || '')) || String(a.memberName || '').localeCompare(String(b.memberName || '')));
+  byNum.forEach(m => { const n = extractMemberNum(m.memberNumber); if (isFinite(n) && n > 0 && !used.has(n)) { used.add(n); out.push({ m, n }); } else todo.push(m); });
+  let free = 1; todo.forEach(m => { while (used.has(free)) free++; used.add(free); out.push({ m, n: free, filled: true }); });
+  return out.sort((a, b) => a.n - b.n).map(p => ({ m: p.m, filled: !!p.filled, old: p.m.memberNumber || '', nu: 'EKFS-M-' + String(p.n).padStart(w, '0') }));
+}
+function rnDownload(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: type || 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); }
+async function rnOpen() {
+  const se = getSession(); if (!se || se.role !== 'admin') { alert('Only the Admin can renumber members.'); return; }
+  const members = await getCollectionEntriesWithId('tablebanking', 'member-register');
+  const plan = rnPlan(members), changed = plan.filter(p => p.old !== p.nu), filled = plan.filter(p => p.filled);
+  const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#f4f6f4;z-index:9500;overflow:auto;color:#111;';
+  ov.innerHTML = '<div style="position:sticky;top:0;background:#1f3864;color:#fff;padding:10px;display:flex;justify-content:space-between;align-items:center;z-index:2"><b>🔢 Member numbers</b><button type="button" id="rnX" style="padding:6px 12px;border:none;border-radius:8px">Close</button></div><div style="padding:10px;max-width:760px;margin:auto">' +
+    '<div style="background:#fff;border:1px solid #d5ddd5;border-radius:10px;padding:10px;font-size:13px;line-height:1.6">Only the member numbers change: every member gets the format <b>EKFS-M-###</b> (e.g. EKFS037 → EKFS-M-037). Each member keeps their own digits, so the order stays the same. Members with no number (or a repeated one) take the free numbers.<br><b>'+changed.length+'</b> of '+plan.length+' members will change; <b>'+filled.length+'</b> get a new free number. New members continue after the last number.</div>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0"><button type="button" id="rnCsv" style="flex:1;padding:11px;border:none;border-radius:10px;background:#546e7a;color:#fff;font-weight:700">⬇ Old → new list (Excel/CSV)</button><button type="button" id="rnApply" style="flex:1;padding:11px;border:none;border-radius:10px;background:#b71c1c;color:#fff;font-weight:700">✔ Apply renumbering</button></div><div id="rnMsg" style="font-size:13px;margin:6px 0"></div>' +
+    '<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff"><thead><tr style="background:#e8f0e8"><th style="text-align:left;padding:4px">Name</th><th>Old</th><th>New</th></tr></thead><tbody>' +
+    plan.map(p => '<tr style="border-top:1px solid #ddd;' + (p.old !== p.nu ? 'background:#fffbe6' : '') + '"><td style="padding:4px">' + escHtml(p.m.memberName) + '</td><td>' + escHtml(p.old || '—') + '</td><td><b>' + p.nu + '</b></td></tr>').join('') + '</tbody></table></div>';
+  document.body.appendChild(ov); ov.querySelector('#rnX').onclick = () => ov.remove();
+  const csv = () => 'Name,Old number,New number\r\n' + plan.map(p => [p.m.memberName, p.old, p.nu].map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  ov.querySelector('#rnCsv').onclick = () => rnDownload('EKFS_member_renumbering_old_to_new.csv', csv());
+  ov.querySelector('#rnApply').onclick = async () => {
+    const msg = ov.querySelector('#rnMsg'), btn = ov.querySelector('#rnApply');
+    if (!changed.length) { msg.textContent = 'Nothing to change — numbers already follow this order.'; return; }
+    if (!confirm('Renumber ' + changed.length + ' members now?\n\nA backup of the register and the old→new list will download first. Old printed cards still scan.')) return;
+    btn.disabled = true; msg.textContent = 'Saving backup…';
+    try {
+      rnDownload('EKFS_register_backup_before_renumber_' + new Date().toISOString().slice(0, 10) + '.json', JSON.stringify({ at: new Date().toISOString(), members: members }));
+      rnDownload('EKFS_member_renumbering_old_to_new.csv', csv());
+      const nameNew = {}; plan.forEach(p => { nameNew[p.m.memberName] = p.nu; });
+      const regCol = db.collection(storageKey('tablebanking', 'member-register')); let done = 0;
+      const ops = changed.map(p => async () => { await regCol.doc(p.m.__id).update({ memberNumber: p.nu }); try { const cd = await cardCol().doc(p.m.__id).get(); if (cd.exists) await cardCol().doc(p.m.__id).update({ memberNumber: p.nu }); } catch (e) {} });
+      for (let i = 0; i < ops.length; i += 15) { await Promise.all(ops.slice(i, i + 15).map(f => f())); done = Math.min(ops.length, i + 15); msg.textContent = 'Renumbering… ' + done + ' / ' + ops.length; }
+      for (const col of ['meeting-attendance', 'card-request']) {
+        try { const rows = await getCollectionEntriesWithId('tablebanking', col); const cc = db.collection(storageKey('tablebanking', col)); const todo = rows.filter(r => nameNew[r.memberName] && r.memberNumber !== nameNew[r.memberName]);
+          for (let i = 0; i < todo.length; i += 15) await Promise.all(todo.slice(i, i + 15).map(r => cc.doc(r.__id).update({ memberNumber: nameNew[r.memberName] }))); } catch (e) { console.warn(col, e); }
+      }
+      auditLog('renumbered members', 'member-register', '', changed.length + ' members renumbered');
+      msg.innerHTML = '<b style="color:#1b5e20">Done — ' + changed.length + ' members renumbered.</b> New ID cards print the new number; old printed cards still scan.';
+    } catch (e) { msg.innerHTML = '<b style="color:#b71c1c">Stopped: ' + escHtml(e.message) + '</b> Run it again — it continues safely.'; btn.disabled = false; }
+  };
+}
+
+// ===== Admin/staff notifications: new card requests & loan requests =====
+var ntLast = { crq: null, loan: null };
+function ntToast(text) {
+  const d = document.createElement('div'); d.textContent = text; d.style.cssText = 'position:fixed;left:10px;right:10px;top:10px;z-index:99999;background:#c62828;color:#fff;padding:12px;border-radius:12px;font-weight:800;text-align:center;box-shadow:0 4px 14px rgba(0,0,0,.4)';
+  document.body.appendChild(d); setTimeout(() => d.remove(), 6000);
+}
+function ntSet(id, base, n) { const b = document.getElementById(id); if (!b) return; b.innerHTML = base + (n ? ' <span style="background:#fff;color:#c62828;border-radius:10px;padding:1px 7px;font-size:12px;font-weight:900;margin-left:3px">' + n + '</span>' : ''); }
+async function ntPoll() {
+  const se = getSession(); if (!se || !['admin', 'chairperson', 'official', 'bookkeeper'].includes(se.role)) return;
+  try {
+    if (document.getElementById('crqNavBtn')) {
+      const rows = await getCollectionEntries('tablebanking', 'card-request'); const n = rows.filter(r => r.status === 'Submitted').length;
+      ntSet('crqNavBtn', '🪪 Card requests', n); if (ntLast.crq !== null && n > ntLast.crq) ntToast('🪪 New card request received'); ntLast.crq = n;
+    }
+    if (document.getElementById('laViewBtn') || document.getElementById('laNavBtn')) {
+      const rows = await getCollectionEntries('tablebanking', 'loan-request'); const n = rows.filter(r => !r.status || r.status === 'New').length;
+      ntSet('laViewBtn', '🧾 Loan requests', n); if (ntLast.loan !== null && n > ntLast.loan) ntToast('🧾 New loan request received'); ntLast.loan = n;
+      if (document.getElementById('laNavBtn')) { const ap = rows.filter(r => r.status === 'Approved by Credit Committee').length; ntSet('laNavBtn', '✍ Loan approvals', ap); }
+    }
+  } catch (e) {}
+}
+setInterval(ntPoll, 30000); setTimeout(ntPoll, 4000); setInterval(() => { if (document.getElementById('crqNavBtn') && !document.getElementById('crqNavBtn').dataset.nt) { document.getElementById('crqNavBtn').dataset.nt = '1'; ntPoll(); } }, 3000);
 function setupPrintButtons() {
   const nav = document.getElementById('viewNav');
   if (nav && !document.getElementById('printMenuBtn')) {
@@ -5152,7 +5220,11 @@ function regFormHtml(m) {
     sec('D.  DOCUMENTS ATTACHED (tick)') + '<table>' + docs.map(x => '<tr><td ' + tdV + '>' + BOX + '&nbsp; ' + x + '</td><td ' + tdV + ' style="width:25%;color:#666;font-size:11px;">Received by: ________</td></tr>').join('') + '</table>' +
     '<div class="pb"></div>' + sec('E.  DECLARATION') + '<ol style="font-size:12.5px;line-height:1.5;padding-left:20px;margin:4px 0;">' + decl.map(x => '<li style="margin-bottom:4px;">' + x + '</li>').join('') + '</ol>' +
     '<table style="margin-top:28px;"><tr><td style="border:0;width:50%;font-size:12px;">Applicant signature / thumbprint: ' + v('', 130) + '<br><br>Date: ' + v('', 110) + '</td><td style="border:0;font-size:12px;">Witness name: ' + v('', 160) + '<br><br>Signature: ' + v('', 90) + ' Date: ' + v('', 80) + '</td></tr></table>' +
-    sec('F.  FOR OFFICIAL USE ONLY') + '<table>' + r2('Recommended by (Membership / Secretary)', v('', 100), 'Signature &amp; date', v('', 100)) + r2('Approved by (Chairperson)', v('', 100), 'Signature &amp; date', v('', 100)) + r2('Member number allocated', v(m.memberNumber, 100), 'Entered in system by / date', v('', 100)) + r1('Decision', opt(['Approved', 'Rejected', 'Deferred'], '') + '&nbsp;&nbsp;&nbsp; Reason (if not approved): ' + v('', 150)) + '</table>' +
+    '<div class="pb"></div>' + sec('F.  MEMBER DATA PROTECTION DECLARATION AND CONSENT') +
+    '<p style="font-size:12.5px;line-height:1.55;margin:4px 0;"><b>“Sensitive personal data”</b> means data revealing the natural person’s race, health status, ethnic social origin, conscience, belief, genetic data, biometric data, property details, marital status, civil registration of births and deaths details, tax registration details, telephone number, bank details, family details including names of the person’s children, parents, spouse or spouses, sex or the sexual orientation of the data subject.</p>' +
+    '<p style="font-size:12.5px;line-height:1.55;margin:8px 0;">I, ' + v(m.memberName, 230) + ' ID No. ' + v(m.idNo, 120) + ', have read and understood the statement above. I confirm that the personal data I have given in this form, including sensitive personal data, is true and complete, and I consent to East Kamagak Farmers SACCO Limited collecting, storing and using it only for membership, savings, credit, record-keeping, reporting to the Commissioner for Co-operative Development and other lawful SACCO purposes, in line with the Data Protection Act, 2019. I understand that the SACCO will keep my data safe, will not share it without a lawful reason, and that I may ask to see, correct or withdraw my data in writing.</p>' +
+    '<table style="margin-top:26px;"><tr><td style="border:0;width:50%;font-size:12px;">Member signature / thumbprint: ' + v('', 120) + '<br><br>Date: ' + v('', 110) + '</td><td style="border:0;font-size:12px;">Witness name: ' + v('', 150) + '<br><br>Signature: ' + v('', 90) + ' Date: ' + v('', 80) + '</td></tr></table>' +
+    sec('G.  FOR OFFICIAL USE ONLY') + '<table>' + r2('Recommended by (Membership / Secretary)', v('', 100), 'Signature &amp; date', v('', 100)) + r2('Approved by (Chairperson)', v('', 100), 'Signature &amp; date', v('', 100)) + r2('Member number allocated', v(m.memberNumber, 100), 'Entered in system by / date', v('', 100)) + r1('Decision', opt(['Approved', 'Rejected', 'Deferred'], '') + '&nbsp;&nbsp;&nbsp; Reason (if not approved): ' + v('', 150)) + '</table>' +
     '<p style="font-size:10.5px;color:#444;border-top:2px solid #1f6e3d;margin-top:18px;padding-top:4px;text-align:center;">East Kamagak Farmers SACCO Limited · Reg. No. CS/31276 · P.O. Box 194 Oyugis, Homa Bay County · Tel: +254 740 193 141 · eastkamagaksavingsandcredit@gmail.com</p>';
 }
 function printRegForm(m) { openPrintWindow(m && m.memberName ? 'Registration form — ' + m.memberName : 'Member Registration Form (blank)', regFormHtml(m)); }
@@ -5693,7 +5765,7 @@ function cardParse(text) {
 }
 async function cardResolve(parsed) {
   const members = await getCollectionEntriesWithId('tablebanking', 'member-register');
-  const m = members.find(x => String(x.memberNumber) === String(parsed.number));
+  const m = members.find(x => String(x.memberNumber) === String(parsed.number)) || members.find(x => extractMemberNum(x.memberNumber) === extractMemberNum(parsed.number) && isFinite(extractMemberNum(parsed.number)));
   if (!m) return { err: 'No member with number ' + parsed.number + '.' };
   let ok = false;
   try { const d = await cardCol().doc(m.__id).get(); ok = d.exists && (d.data() || {}).code === parsed.code; } catch (e) {}
@@ -5807,7 +5879,14 @@ async function cardReqPortal(root, member, memberName) {
     '<div style="background:#f1f8e9;border-radius:10px;padding:9px;margin:8px 0;font-size:13.5px;">M-Pesa → Lipa na M-Pesa → <b>Pay Bill</b><br>' + t('Business number', 'Namba ya biashara') + ': <b>' + escHtml(P.paybill) + '</b><br>' + t('Account number', 'Namba ya akaunti') + ': <b>' + escHtml(P.account) + '</b><br>' + t('Amount', 'Kiasi') + ': <b>KES ' + CRQ_FEE + '</b></div>' +
     '<input id="crqCode" maxlength="12" autocapitalize="characters" placeholder="' + t('M-Pesa code e.g. SLK4X7Y2AB', 'Msimbo wa M-Pesa mfano SLK4X7Y2AB') + '" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #bbb;border-radius:10px;font-size:16px;text-transform:uppercase;letter-spacing:1px;">' +
     '<button type="button" id="crqSend" style="margin-top:8px;width:100%;padding:12px;border-radius:12px;border:none;background:#1b5e20;color:#fff;font-weight:800;font-size:14px;">' + t('Submit request', 'Tuma ombi') + '</button><div id="crqMsg" style="margin-top:6px;font-size:13px;font-weight:700;color:#b71c1c;"></div>';
+  const regSt = regStatusOf(member || {});
   let html;
+  if (regSt !== 'full' && !(cur && crqActive(cur))) {
+    const fee = parseFloat((member || {}).registrationFee) || 0, sh = parseFloat((member || {}).shareCapital) || 0;
+    slot.innerHTML = box('<div style="font-size:13.5px;color:#333;">' + t('Only <b>fully registered</b> members can request a membership card: registration fee KES 200 and share capital KES 1,000 fully paid.', 'Ni wanachama <b>waliosajiliwa kikamilifu</b> pekee wanaweza kuomba kadi: ada ya usajili KES 200 na hisa KES 1,000 zilizolipwa kamili.') + '</div><div style="background:#fff8e1;border-radius:10px;padding:9px;margin-top:8px;font-size:13px;">' + t('Registration fee paid', 'Ada ya usajili') + ': <b>KES ' + fee + '</b> / 200<br>' + t('Share capital paid', 'Hisa zilizolipwa') + ': <b>KES ' + sh + '</b> / 1,000</div>');
+    const ban0 = root.querySelector('#mhCardBan'); if (ban0) ban0.innerHTML = '';
+    return;
+  }
   if (cur && crqActive(cur)) {
     const idx = CRQ_STEPS.indexOf(cur.status);
     const lbl = { 'Submitted': t('Request received', 'Ombi limepokelewa'), 'Payment confirmed': t('Payment confirmed', 'Malipo yamethibitishwa'), 'Card being printed': t('Card being printed', 'Kadi inachapishwa'), 'Ready for collection': t('Ready for collection', 'Tayari kuchukuliwa'), 'Collected': t('Collected', 'Imechukuliwa') };
@@ -5826,6 +5905,7 @@ async function cardReqPortal(root, member, memberName) {
     const msg = slot.querySelector('#crqMsg'), code = slot.querySelector('#crqCode').value.trim().toUpperCase().replace(/\s+/g, '');
     if (!/^[A-Z0-9]{10}$/.test(code)) { msg.textContent = t('Type the 10-character M-Pesa code from your payment message.', 'Andika msimbo wa M-Pesa wenye herufi 10 kutoka kwa ujumbe wa malipo.'); return; }
     if (all.some(r => String(r.mpesaCode || '').toUpperCase() === code)) { msg.textContent = t('This M-Pesa code has already been used.', 'Msimbo huu wa M-Pesa umeshatumika.'); return; }
+    if (regStatusOf(member || {}) !== 'full') { msg.textContent = t('Only fully registered members can request a card.', 'Ni wanachama waliosajiliwa kikamilifu pekee wanaweza kuomba kadi.'); return; }
     send.disabled = true;
     try { await crqCol().add({ date: new Date().toISOString().slice(0, 10), createdAt: new Date().toISOString(), memberName, memberNumber: member.memberNumber || '', mpesaCode: code, amount: CRQ_FEE, status: 'Submitted', note: '' }); auditLog('card request', 'card-request', '', memberName + ' · ' + code); cardReqPortal(root, member, memberName); }
     catch (x) { send.disabled = false; msg.textContent = t('Could not send. Check your internet and try again.', 'Imeshindwa kutuma. Angalia mtandao ujaribu tena.'); }
@@ -5835,7 +5915,7 @@ async function crqOpen() {
   if (!cardAllowed()) { alert('Only Admin, Chairperson, Official or Bookkeeper can handle card requests.'); return; }
   const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#f4f6f4;z-index:9500;overflow:auto;color:#111;';
   ov.innerHTML = '<div style="position:sticky;top:0;background:#1b5e20;color:#fff;padding:10px;display:flex;justify-content:space-between;align-items:center;z-index:2"><b>🪪 Card requests</b><button type="button" id="crqX" style="padding:6px 12px;border-radius:8px;border:none;font-weight:700">Close</button></div><div style="max-width:720px;margin:0 auto;padding:10px"><div style="font-size:12.5px;color:#555;margin-bottom:8px">Members pay KES ' + CRQ_FEE + ' to the Paybill and type the M-Pesa code. Check the code in the M-Pesa inbox, then move the request along. Members see each step on their portal. The KES ' + CRQ_FEE + ' is not posted to the books automatically.</div><div id="crqTabs" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px"></div><div id="crqList"></div></div>';
-  document.body.appendChild(ov); ov.querySelector('#crqX').onclick = () => { ov.remove(); cardNavSetup(); };
+  document.body.appendChild(ov); ov.querySelector('#crqX').onclick = () => { ov.remove(); cardNavSetup(); ntPoll(); };
   let filter = 'Open', rows = [];
   const next = { 'Submitted': ['Payment confirmed', 'Confirm payment'], 'Payment confirmed': ['Card being printed', 'Start printing'], 'Card being printed': ['Ready for collection', 'Post: Ready for collection'], 'Ready for collection': ['Collected', 'Mark collected'] };
   const load = async () => { rows = (await getCollectionEntriesWithId('tablebanking', 'card-request')).sort((a, b) => String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || ''))); draw(); };
@@ -6178,6 +6258,7 @@ function cardNavSetup() {
   });
   if ((getSession() || {}).role === 'admin' && !document.getElementById('rcNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'rcNavBtn'; b.textContent = '🛟 Recovery code'; b.style.cssText = 'flex:0 0 auto;background:#b71c1c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', recCodeOpen); nav.appendChild(b); }
   if ((getSession() || {}).role === 'admin' && !document.getElementById('stiNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'stiNavBtn'; b.textContent = '📥 Statement import'; b.style.cssText = 'flex:0 0 auto;background:#1f3864!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', stiOpen); nav.appendChild(b); }
+  if ((getSession() || {}).role === 'admin' && !document.getElementById('rnNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'rnNavBtn'; b.textContent = '🔢 Member numbers'; b.style.cssText = 'flex:0 0 auto;background:#4a148c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', rnOpen); nav.appendChild(b); }
   { const w = nav.querySelector('[data-v=ward]'); if (w) { let ref = w; ['idcNavBtn', 'crqNavBtn', 'attNavBtn', 'scanNavBtn'].forEach(id => { const b = document.getElementById(id); if (b) { if (ref.nextElementSibling !== b) ref.after(b); ref = b; } }); } }
 }
 function cardFabSetup() {
@@ -6423,7 +6504,7 @@ function laPortalShow(layoutEl, memberViewEl) {
 }
 async function laBadge() {
   const se = getSession(); const b = document.getElementById('laNavBtn'); if (!se || !b) return;
-  try { const rs = await getCollectionEntries('tablebanking', 'loan-request'); const n = rs.filter(r => (r.status || '') === 'Approved by Credit Committee').length; b.textContent = '✍ Loan approvals' + (n ? ' (' + n + ')' : ''); } catch (e) {}
+  try { const rs = await getCollectionEntries('tablebanking', 'loan-request'); const n = rs.filter(r => (r.status || '') === 'Approved by Credit Committee').length; ntSet('laNavBtn', '✍ Loan approvals', n); } catch (e) {}
 }
 function laNavSetup() {
   const se = getSession(), nav = document.getElementById('viewNav'); if (!se || !nav) return;
