@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 3 Nov 2026 · build BQ</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 12 Nov 2026 · build BT</span></p>
   </div>
 </div>
 
@@ -2650,6 +2650,8 @@ function renderRows(entries) {
       }
       if (currentCategory === 'tablebanking' && currentRecord === 'mpesa-inbox') mpesaRowButtons(row, tdAction);
       if (currentCategory === 'tablebanking' && currentRecord === 'member-register') mfRowButton(row, tdAction);
+      if (currentCategory === 'tablebanking' && currentRecord === 'member-register') rcRowButton(row, tdAction, 'reg');
+      if (currentCategory === 'tablebanking' && currentRecord === 'contribution-record') rcRowButton(row, tdAction);
       if (currentCategory === 'tablebanking' && currentRecord === 'meeting-summary') mnRowButton(row, tdAction);
       if (currentCategory === 'tablebanking' && (currentRecord === 'loan-recovery' || currentRecord === 'loan-restructure')) recRowButtons(row, tdAction);
       if (currentCategory === 'tablebanking' && currentRecord === 'mpesa-inbox' && row.status === 'Pending') tr.style.background = '#fff8e1';
@@ -2746,6 +2748,7 @@ async function renderGroupedContributions(entries) {
         }
         if (currentRecord === 'loan-recovery' || currentRecord === 'loan-restructure') recRowButtons(e, tdAct);
         if (currentRecord === 'loan-request') lfRowButtons(e, tdAct);
+        if (currentRecord === 'contribution-record') rcRowButton(e, tdAct);
         tr.appendChild(tdAct);
         tbody.appendChild(tr);
       });
@@ -3780,6 +3783,141 @@ async function stmtXlsRun(kind) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([r.bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); a.download = 'EKFS_Statement_Payments_By_Member_' + new Date().toISOString().slice(0, 10) + '.xlsx'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
   alert('Excel ready: ' + r.members + ' members, ' + r.payments + ' payments, KES ' + r.total.toLocaleString() + '. ' + r.unmatched + ' statement payments could not be matched to a member (see the last sheet).');
 }
+
+// ===== Share transfer between members (Admin) =====
+async function stOpen() {
+  const se = getSession(); if (!se || se.role !== 'admin') { alert('Only the Admin can transfer shares.'); return; }
+  const members = (await getCollectionEntriesWithId('tablebanking', 'member-register')).filter(m => (m.status || 'Active') === 'Active').sort((a, b) => extractMemberNum(a.memberNumber) - extractMemberNum(b.memberNumber));
+  let hist = []; try { hist = (await getCollectionEntriesWithId('tablebanking', 'share-transfers')).sort((a, b) => String(b.at).localeCompare(String(a.at))); } catch (e) {}
+  const opt = m => '<option value="' + m.__id + '">' + escHtml((m.memberNumber || '') + ' · ' + m.memberName + ' (shares KES ' + (parseFloat(m.shareCapital) || 0) + ')') + '</option>';
+  const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#f4f6f4;z-index:9500;overflow:auto;color:#111;';
+  const inp = 'width:100%;box-sizing:border-box;padding:10px;margin:4px 0;border:1px solid #bbb;border-radius:8px;font-size:15px';
+  ov.innerHTML = '<div style="position:sticky;top:0;background:#1f3864;color:#fff;padding:10px;display:flex;justify-content:space-between;align-items:center;z-index:2"><b>🔁 Share transfer</b><button type="button" id="stX" style="padding:6px 12px;border:none;border-radius:8px">Close</button></div><div style="padding:10px;max-width:700px;margin:auto">' +
+    '<div style="background:#fff;border:1px solid #d5ddd5;border-radius:10px;padding:10px;font-size:13px;line-height:1.5">Moves share capital from one member to another after the <b>Share Transfer Form</b> is signed and approved. Nothing else changes (no cash moves). Savings, loans and the registration fee are not touched.</div>' +
+    '<label style="font-weight:700;font-size:13px">From (transferor)</label><select id="stFrom" style="' + inp + '"><option value="">— choose —</option>' + members.filter(m => (parseFloat(m.shareCapital) || 0) > 0).map(opt).join('') + '</select>' +
+    '<label style="font-weight:700;font-size:13px">To (transferee, must be an active member)</label><select id="stTo" style="' + inp + '"><option value="">— choose —</option>' + members.map(opt).join('') + '</select>' +
+    '<label style="font-weight:700;font-size:13px">Amount (KES)</label><input id="stAmt" type="number" inputmode="numeric" style="' + inp + '">' +
+    '<label style="font-weight:700;font-size:13px">Reason</label><select id="stWhy" style="' + inp + '"><option>Gift</option><option>Sale</option><option>Family arrangement</option><option>Death / succession</option><option>Other</option></select>' +
+    '<label style="font-weight:700;font-size:13px">Form no. / approval minute</label><input id="stRef" style="' + inp + '">' +
+    '<div id="stInfo" style="font-size:13px;line-height:1.5;margin:6px 0"></div>' +
+    '<label style="font-size:13px"><input type="checkbox" id="stOk"> The form is signed by both members and approved by the Chairperson, and the transferor has no loan or guarantee that these shares secure.</label>' +
+    '<button type="button" id="stGo" style="width:100%;padding:12px;margin-top:8px;border:none;border-radius:10px;background:#1f6e3d;color:#fff;font-weight:800;font-size:15px">Transfer shares</button><div id="stMsg" style="margin:8px 0;font-weight:700"></div>' +
+    '<h4>Past transfers (' + hist.length + ')</h4>' + (hist.length ? '<table style="width:100%;border-collapse:collapse;font-size:12px;background:#fff"><tr style="background:#e8f0e8"><th style="text-align:left;padding:4px">Date</th><th>From</th><th>To</th><th>KES</th><th>Form</th></tr>' + hist.map(h => '<tr style="border-top:1px solid #ddd"><td style="padding:4px">' + escHtml(String(h.at || '').slice(0, 10)) + '</td><td>' + escHtml(h.fromName) + '</td><td>' + escHtml(h.toName) + '</td><td>' + escHtml(h.amount) + '</td><td>' + escHtml(h.ref || '') + '</td></tr>').join('') + '</table>' : '<div style="font-size:13px;color:#666">None yet.</div>') + '</div>';
+  document.body.appendChild(ov); ov.querySelector('#stX').onclick = () => ov.remove();
+  const byId = id => members.find(m => m.__id === id), info = async () => {
+    const f = byId(ov.querySelector('#stFrom').value), tt = byId(ov.querySelector('#stTo').value), a = parseFloat(ov.querySelector('#stAmt').value) || 0; let h = '';
+    if (f) { const fs = parseFloat(f.shareCapital) || 0; h += f.memberName + ': KES ' + fs + (a ? ' → <b>' + (fs - a) + '</b>' : '') + (a && fs - a < STI_SHARE ? ' <span style="color:#b71c1c">(below KES ' + STI_SHARE + ': will no longer be fully registered)</span>' : '') + '<br>'; try { const loans = (await getCollectionEntries('tablebanking', 'loan-issued')).filter(x => x.memberName === f.memberName).length; if (loans) h += '<span style="color:#b71c1c">⚠ ' + f.memberName + ' has ' + loans + ' loan record(s) — confirm they are cleared and guarantees released.</span><br>'; } catch (e) {} }
+    if (tt) { const ts = parseFloat(tt.shareCapital) || 0; h += tt.memberName + ': KES ' + ts + (a ? ' → <b>' + (ts + a) + '</b>' : ''); }
+    ov.querySelector('#stInfo').innerHTML = h;
+  };
+  ['stFrom', 'stTo', 'stAmt'].forEach(i => ov.querySelector('#' + i).addEventListener('input', info));
+  ov.querySelector('#stGo').onclick = async () => {
+    const msg = ov.querySelector('#stMsg'), f = byId(ov.querySelector('#stFrom').value), tt = byId(ov.querySelector('#stTo').value), a = Math.round(parseFloat(ov.querySelector('#stAmt').value) || 0);
+    msg.style.color = '#b71c1c';
+    if (!f || !tt) { msg.textContent = 'Choose both members.'; return; }
+    if (f.__id === tt.__id) { msg.textContent = 'The two members must be different.'; return; }
+    if (a <= 0) { msg.textContent = 'Enter the amount.'; return; }
+    const fs = parseFloat(f.shareCapital) || 0, ts = parseFloat(tt.shareCapital) || 0;
+    if (a > fs) { msg.textContent = 'The transferor has only KES ' + fs + ' in shares.'; return; }
+    if (!ov.querySelector('#stOk').checked) { msg.textContent = 'Tick the box to confirm the form is signed and approved.'; return; }
+    if (!confirm('Move KES ' + a + ' of shares from ' + f.memberName + ' to ' + tt.memberName + '?')) return;
+    const btn = ov.querySelector('#stGo'); btn.disabled = true; msg.style.color = '#555'; msg.textContent = 'Working…';
+    try {
+      const col = db.collection(storageKey('tablebanking', 'member-register'));
+      await col.doc(f.__id).update({ shareCapital: String(fs - a) }); await col.doc(tt.__id).update({ shareCapital: String(ts + a) });
+      await db.collection(storageKey('tablebanking', 'share-transfers')).add({ at: new Date().toISOString(), fromName: f.memberName, fromNo: f.memberNumber || '', toName: tt.memberName, toNo: tt.memberNumber || '', amount: String(a), reason: ov.querySelector('#stWhy').value, ref: ov.querySelector('#stRef').value, by: se.username, fromBefore: String(fs), toBefore: String(ts) });
+      auditLog('share transfer', 'member-register', f.__id, 'KES ' + a + ' ' + f.memberName + ' → ' + tt.memberName);
+      msg.style.color = '#1b5e20'; msg.textContent = 'Done. ' + f.memberName + ' now has KES ' + (fs - a) + '; ' + tt.memberName + ' has KES ' + (ts + a) + '.'; ov.remove(); stOpen();
+    } catch (e) { btn.disabled = false; msg.style.color = '#b71c1c'; msg.textContent = 'Stopped: ' + e.message; }
+  };
+}
+
+// ===== Membership and capital summary (for returns) =====
+async function msOpen() {
+  const se = getSession(); if (!se || !['admin', 'chairperson', 'official'].includes(se.role)) { alert('Not allowed.'); return; }
+  const all = await getCollectionEntriesWithId('tablebanking', 'member-register'), act = all.filter(m => (m.status || 'Active') === 'Active');
+  const cnt = (arr, f) => arr.filter(f).length, sum = (arr, k) => arr.reduce((a, m) => a + (parseFloat(m[k]) || 0), 0);
+  const st = { full: 0, partial: 0, feeonly: 0, none: 0 }; act.forEach(m => st[regStatusOf(m)]++);
+  let savings = 0, loans = 0, loanSum = 0; try { const c = await getCollectionEntries('tablebanking', 'contribution-record'); savings = c.filter(isSavRec).reduce((a, r) => a + (parseFloat(r.amount) || 0), 0); } catch (e) {}
+  try { const l = await getCollectionEntries('tablebanking', 'loan-issued'); loans = l.length; loanSum = l.reduce((a, r) => a + (parseFloat(r.loanAmount) || parseFloat(r.amount) || 0), 0); } catch (e) {}
+  const row = (a, b) => ['<b>' + a + '</b>', b];
+  const tb = [row('Total members on register', all.length), row('Active members', act.length), row('Left / Deceased / Defaulted / Removed', all.length - act.length),
+    row('Active — Male', cnt(act, m => m.sex === 'Male')), row('Active — Female', cnt(act, m => m.sex === 'Female')),
+    row('Active — aged 18–35 (youth)', cnt(act, m => m.ageBracket === '18-35 years')), row('Active — aged 36–60', cnt(act, m => m.ageBracket === '36-60 years')), row('Active — over 60', cnt(act, m => m.ageBracket === 'Over 60 years')),
+    row('Fully registered (fee + KES 1,000 share)', st.full), row('Partially registered', st.partial), row('Fee only', st.feeonly), row('Nothing paid', st.none),
+    row('Registration fees collected (KES)', sum(act, 'registrationFee').toLocaleString()), row('Share capital paid (KES)', sum(act, 'shareCapital').toLocaleString()), row('Savings recorded (KES)', savings.toLocaleString()),
+    row('Loans issued (count)', loans), row('Loans issued (KES)', loanSum.toLocaleString())];
+  const html = '<h2>Membership and capital summary</h2>' + pbStamp() + '<table style="width:100%;border-collapse:collapse;font-size:13px">' + tb.map(r => '<tr><td style="border:1px solid #bbb;padding:5px">' + r[0] + '</td><td style="border:1px solid #bbb;padding:5px;text-align:right">' + r[1] + '</td></tr>').join('') + '</table><p style="font-size:11px;color:#555">Figures are taken from the SACCO system on the date above. Held members (not yet verified against the statement) are still counted here — see Statement import.</p><div class="sig"><div>Prepared by</div><div>Chairperson</div><div>Treasurer</div></div>';
+  openPrintWindow('Membership and capital summary', html);
+}
+/* ===== Receipts (build BS) ===== */
+function rcNum(v) { const n = parseFloat(String(v == null ? '' : v).replace(/,/g, '')); return isFinite(n) ? n : 0; }
+async function rcData(name) {
+  const [members, contrib] = await Promise.all([getCollectionEntriesWithId('tablebanking', 'member-register'), getCollectionEntriesWithId('tablebanking', 'contribution-record')]);
+  const key = String(name || '').trim().toLowerCase();
+  const m = members.filter(x => String(x.memberName || '').trim().toLowerCase() === key && x.status !== 'Removed')[0] || members.filter(x => String(x.memberName || '').trim().toLowerCase() === key)[0] || null;
+  const sav = contrib.filter(r => String(r.memberName || '').trim().toLowerCase() === key && isSavRec(r) && r.contributionType !== 'Other amount' && rcNum(r.amount) > 0)
+    .map((r, i) => ({ r, i })).sort((a, b) => String(a.r.date || '').localeCompare(String(b.r.date || '')) || a.i - b.i).map(x => x.r);
+  return { m, sav };
+}
+function rcNo(m, n) { return 'EKFS-R-' + String(extractMemberNum(m && m.memberNumber) || 0).padStart(3, '0') + '-' + String(n).padStart(3, '0'); }
+async function rcSerial(key, info) {
+  const col = db.collection(storageKey('tablebanking', 'receipts'));
+  let all = []; try { all = await getCollectionEntriesWithId('tablebanking', 'receipts'); } catch (e) {}
+  const ex = all.find(x => x.key === key); if (ex) return ex.no;
+  let mx = 0; all.forEach(x => { const n = parseInt(String(x.no || '').replace(/\D/g, ''), 10); if (n > mx) mx = n; });
+  const no = 'EKFS-R-' + String(mx + 1).padStart(5, '0');
+  try { await col.doc(key).set(Object.assign({ key, no, at: new Date().toISOString(), by: getSession() ? getSession().username : '' }, info || {})); } catch (e) { alert('Could not save the receipt number. Check your connection and try again.'); throw e; }
+  return no;
+}
+// focusId: contribution __id to highlight (receipt for that payment, with all previous); 'reg' = fee+share receipt; 'all' = everything
+async function rcPrint(name, focusId) {
+  const { m, sav } = await rcData(name);
+  if (!m) { alert('Member "' + name + '" was not found in the Member Register.'); return; }
+  const fee = rcNum(m.registrationFee), share = rcNum(m.shareCapital);
+  let upto = sav.length, focusIdx = -1;
+  if (focusId && focusId !== 'all' && focusId !== 'reg') { focusIdx = sav.findIndex(r => r.__id === focusId); if (focusIdx >= 0) upto = focusIdx + 1; }
+  const list = sav.slice(0, upto);
+  let run = 0;
+  const rows = list.map((r, i) => { run += rcNum(r.amount); const cur = i === focusIdx;
+    return '<tr' + (cur ? ' style="background:#fff7cc;font-weight:bold"' : '') + '><td>' + (i + 1) + '</td><td>' + escHtml(r.date || '') + '</td><td>Savings</td><td>' + escHtml(r.mpesaRef || '') + '</td><td class="n">' + fmtKES(rcNum(r.amount)) + '</td><td class="n">' + fmtKES(run) + '</td></tr>'; }).join('');
+  const savTotal = run;
+  const cur = focusIdx >= 0 ? list[focusIdx] : null;
+  let rno;
+  if (focusIdx >= 0) rno = await rcSerial('p_' + cur.__id, { memberName: m.memberName, memberNo: m.memberNumber || '', kind: 'Savings', amount: rcNum(cur.amount), date: cur.date || '' });
+  else if (focusId === 'reg') rno = await rcSerial('r_' + m.__id + '_' + fee + '_' + share, { memberName: m.memberName, memberNo: m.memberNumber || '', kind: 'Fee and share', amount: fee + share, date: m.dateJoined || '' });
+  else rno = 'STATEMENT-' + new Date().toISOString().slice(0, 10);
+  const paidNow = cur ? rcNum(cur.amount) : (focusId === 'reg' ? fee + share : savTotal + fee + share);
+  const purpose = cur ? 'Savings contribution' : (focusId === 'reg' ? 'Registration fee and share capital' : 'Statement of all payments to date');
+  const memberUser = getSession() ? getSession().username : '';
+  const html = '<div style="display:flex;justify-content:space-between;margin-top:12px"><div><b>RECEIPT</b><br>No. <b>' + escHtml(rno) + '</b></div><div style="text-align:right">Date: <b>' + escHtml((cur && cur.date) || new Date().toISOString().slice(0, 10)) + '</b><br>Paybill 400200 · Acct 1008085</div></div>' +
+    '<table style="margin-top:10px"><tr><td style="width:32%">Received from</td><td><b>' + escHtml(m.memberName) + '</b></td></tr><tr><td>Member No.</td><td><b>' + escHtml(m.memberNumber || '—') + '</b></td></tr><tr><td>Being payment for</td><td>' + escHtml(purpose) + '</td></tr>' +
+    '<tr><td>Amount received</td><td><b style="font-size:16px">' + fmtKES(paidNow) + '</b></td></tr>' + (cur && cur.mpesaRef ? '<tr><td>M-Pesa / Ref.</td><td>' + escHtml(cur.mpesaRef) + '</td></tr>' : '') + '</table>' +
+    '<h2>Member account to date</h2><table><tr><th>Item</th><th>Date</th><th class="n">Amount (KES)</th></tr>' +
+    '<tr><td>Registration fee</td><td>' + escHtml(m.dateJoined || '') + '</td><td class="n">' + fmtKES(fee) + '</td></tr>' +
+    '<tr><td>Share capital</td><td>' + escHtml(m.dateJoined || '') + '</td><td class="n">' + fmtKES(share) + '</td></tr>' +
+    '<tr><td>Savings (total of ' + list.length + ' payments)</td><td></td><td class="n">' + fmtKES(savTotal) + '</td></tr>' +
+    '<tr><th>Total paid to date</th><th></th><th class="n">' + fmtKES(fee + share + savTotal) + '</th></tr></table>' +
+    (list.length ? '<h2>Savings payments' + (cur ? ' (this payment highlighted)' : '') + '</h2><table><tr><th>#</th><th>Date</th><th>Type</th><th>M-Pesa / Ref.</th><th class="n">Amount</th><th class="n">Running savings</th></tr>' + rows + '</table>' : '') +
+    '<p style="margin-top:14px;font-size:12px">Share capital and savings are held under the Co-operative Societies Act and the Society By-laws. Registration fee is non-refundable. Keep this receipt.</p>' +
+    '<div class="sig"><div>Received by (name &amp; signature)' + (memberUser ? ': ' + escHtml(memberUser) : '') + '</div><div>Member signature</div></div>' + pbStamp();
+  try { auditLog('receipt printed', 'receipt', rno, m.memberName + ' · ' + purpose); } catch (e) {}
+  openPrintWindow((focusId === 'all' ? 'Statement ' : 'Receipt ') + rno, html);
+}
+function rcRowButton(row, tdAct, mode) {
+  const s = getSession(); if (!s || s.role === 'member') return;
+  const b = document.createElement('button');
+  b.type = 'button'; b.textContent = '🧾 Receipt'; b.className = 'btn-secondary btn-small';
+  b.onclick = (ev) => { if (ev) ev.stopPropagation(); rcPrint(row.memberName, mode === 'reg' ? 'reg' : row.__id); };
+  tdAct.insertBefore(b, tdAct.firstChild);
+  if (mode === 'reg') {
+    const a = document.createElement('button');
+    a.type = 'button'; a.textContent = '🧾 All payments'; a.className = 'btn-secondary btn-small';
+    a.onclick = (ev) => { if (ev) ev.stopPropagation(); rcPrint(row.memberName, 'all'); };
+    tdAct.insertBefore(a, b.nextSibling);
+  }
+}
+
 function setupPrintButtons() {
   const nav = document.getElementById('viewNav');
   if (nav && !document.getElementById('printMenuBtn')) {
@@ -6395,6 +6533,8 @@ function cardNavSetup() {
   if ((getSession() || {}).role === 'admin' && !document.getElementById('rcNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'rcNavBtn'; b.textContent = '🛟 Recovery code'; b.style.cssText = 'flex:0 0 auto;background:#b71c1c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', recCodeOpen); nav.appendChild(b); }
   if ((getSession() || {}).role === 'admin' && !document.getElementById('stiNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'stiNavBtn'; b.textContent = '📥 Statement import'; b.style.cssText = 'flex:0 0 auto;background:#1f3864!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', stiOpen); nav.appendChild(b); }
   if ((getSession() || {}).role === 'admin' && !document.getElementById('rnNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'rnNavBtn'; b.textContent = '🔢 Member numbers'; b.style.cssText = 'flex:0 0 auto;background:#4a148c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', rnOpen); nav.appendChild(b); }
+  if ((getSession() || {}).role === 'admin' && !document.getElementById('stNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'stNavBtn'; b.textContent = '🔁 Share transfer'; b.style.cssText = 'flex:0 0 auto;background:#1f3864!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', stOpen); nav.appendChild(b); }
+  if (['admin', 'chairperson', 'official'].includes((getSession() || {}).role) && !document.getElementById('msNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'msNavBtn'; b.textContent = '📑 Membership summary'; b.style.cssText = 'flex:0 0 auto;background:#37474f!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', msOpen); nav.appendChild(b); }
   if (['admin', 'chairperson', 'official'].includes((getSession() || {}).role) && !document.getElementById('dpNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'dpNavBtn'; b.textContent = '🔍 Duplicates'; b.style.cssText = 'flex:0 0 auto;background:#b71c1c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', dpOpen); nav.appendChild(b); }
   { const w = nav.querySelector('[data-v=ward]'); if (w) { let ref = w; ['idcNavBtn', 'crqNavBtn', 'attNavBtn', 'scanNavBtn'].forEach(id => { const b = document.getElementById(id); if (b) { if (ref.nextElementSibling !== b) ref.after(b); ref = b; } }); } }
 }
