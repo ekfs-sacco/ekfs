@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 13 Nov 2026 · build BU</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 14 Nov 2026 · build BV</span></p>
   </div>
 </div>
 
@@ -2831,6 +2831,7 @@ function resetForm() {
 async function deleteRow(id) {
   if (!confirm('Delete this entry? This cannot be undone.')) return;
   const key = storageKey(currentCategory, currentRecord);
+  try { if (OT_GATED.indexOf(currentRecord) >= 0) { const sn = await db.collection(key).doc(id).get(); if (!(await mcGuard(sn.exists ? sn.data().date : '', 'deletion'))) return; } } catch (e) {}
   auditLog('deleted', currentRecord, id, '');
   db.collection(key).doc(id).delete().catch((e) => console.error('Delete failed', e));
   statusMsg.textContent = navigator.onLine ? 'Entry deleted.' : 'Deleted locally — will sync when back online.';
@@ -3872,7 +3873,8 @@ async function rcSerial(key, info) {
   const col = db.collection(storageKey('tablebanking', 'receipts'));
   let all = []; try { all = await getCollectionEntriesWithId('tablebanking', 'receipts'); } catch (e) {}
   const ex = all.find(x => x.key === key); if (ex) return ex.no;
-  let mx = 0; all.forEach(x => { const n = parseInt(String(x.no || '').replace(/\D/g, ''), 10); if (n > mx) mx = n; });
+  let mx = 0; try { const mt = await getCollectionEntriesWithId('tablebanking', 'ekfs_meta'), stt = mt.find(x => x.__id === 'receipt-start'); if (stt) mx = Math.max(0, (parseInt(stt.next, 10) || 1) - 1); } catch (e) {}
+  all.forEach(x => { const n = parseInt(String(x.no || '').replace(/\D/g, ''), 10); if (n > mx) mx = n; });
   const no = 'EKFS-R-' + String(mx + 1).padStart(5, '0');
   try { await col.doc(key).set(Object.assign({ key, no, at: new Date().toISOString(), by: getSession() ? getSession().username : '' }, info || {})); } catch (e) { alert('Could not save the receipt number. Check your connection and try again.'); throw e; }
   return no;
@@ -3907,7 +3909,7 @@ async function rcPrint(name, focusId) {
     '<tr><th>Total paid to date</th><th></th><th class="n">' + fmtKES(fee + share + savTotal) + '</th></tr></table>' +
     (list.length ? '<h2>Savings payments' + (cur ? ' (this payment highlighted)' : '') + '</h2><table><tr><th>#</th><th>Date</th><th>Type</th><th>M-Pesa / Ref.</th><th class="n">Amount</th><th class="n">Running savings</th></tr>' + rows + '</table>' : '') +
     '<p style="margin-top:14px;font-size:12px">Share capital and savings are held under the Co-operative Societies Act and the Society By-laws. Registration fee is non-refundable. Keep this receipt.</p>' +
-    '<div class="sig"><div>Received by (name &amp; signature)' + (memberUser ? ': ' + escHtml(memberUser) : '') + '</div><div>Member signature</div></div>' + pbStamp();
+    '<div class="sig"><div>' + ((getSession() || {}).role === 'member' ? 'Printed from the Member portal — valid with the SACCO stamp or M-Pesa confirmation' : 'Received by (name &amp; signature)' + (memberUser ? ': ' + escHtml(memberUser) : '')) + '</div><div>Member signature</div></div>' + pbStamp();
   try { auditLog('receipt printed', 'receipt', rno, m.memberName + ' · ' + purpose); } catch (e) {}
   openPrintWindow((focusId === 'all' ? 'Statement ' : 'Receipt ') + rno, html);
 }
@@ -3968,6 +3970,245 @@ function dcOpen() {
   };
 }
 
+/* ===== Office tools (build BV) ===== */
+var OT_GATED = ['contribution-record', 'loan-issued', 'loan-repayment', 'fines-penalties', 'expenditure', 'other-expenses', 'grant-expenditure', 'member-settlement'];
+function otRole() { return (getSession() || {}).role; }
+function otCol(rec) { return db.collection(storageKey('tablebanking', rec)); }
+function otMonth(d) { return String(d || '').slice(0, 7); }
+function otNum(v) { const n = parseFloat(String(v == null ? '' : v).replace(/,/g, '')); return isFinite(n) ? n : 0; }
+function otK(n) { return Number(n || 0).toLocaleString('en-KE', { maximumFractionDigits: 2 }); }
+function otToday() { return new Date().toISOString().slice(0, 10); }
+function otModal(title, inner) {
+  const old = document.getElementById('otModal'); if (old) old.remove();
+  const ov = document.createElement('div'); ov.id = 'otModal';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9998;overflow:auto;padding:10px;display:flex;justify-content:center;align-items:flex-start;';
+  ov.innerHTML = '<div style="background:#fff;border-radius:12px;max-width:760px;width:100%;padding:14px;box-sizing:border-box;"><div style="display:flex;justify-content:space-between;align-items:center;"><h2 style="margin:0;font-size:16px;">' + title + '</h2><button type="button" id="otX" style="font-size:22px;border:none;background:none;cursor:pointer;">&times;</button></div><div id="otBody">' + inner + '</div></div>';
+  document.body.appendChild(ov); ov.querySelector('#otX').onclick = () => ov.remove(); return ov;
+}
+function otTable(heads, rows, right) {
+  right = right || []; return '<div style="overflow-x:auto"><table style="border-collapse:collapse;width:100%;font-size:12.5px;"><thead><tr>' + heads.map((h, i) => '<th style="text-align:' + (right.indexOf(i) >= 0 ? 'right' : 'left') + ';border-bottom:2px solid #1b5e20;padding:4px 6px;white-space:nowrap">' + escHtml(h) + '</th>').join('') + '</tr></thead><tbody>' +
+    (rows.length ? rows.map(r => '<tr>' + r.map((c, i) => '<td style="padding:4px 6px;border-bottom:1px solid #eee;text-align:' + (right.indexOf(i) >= 0 ? 'right' : 'left') + '">' + (c && c.html != null ? c.html : escHtml(c)) + '</td>').join('') + '</tr>').join('') : '<tr><td colspan="' + heads.length + '" style="padding:8px;color:#777">None.</td></tr>') + '</tbody></table></div>';
+}
+function otPrintTable(heads, rows, right) {
+  right = right || []; return '<table><thead><tr>' + heads.map((h, i) => '<th' + (right.indexOf(i) >= 0 ? ' class="n"' : '') + '>' + escHtml(h) + '</th>').join('') + '</tr></thead><tbody>' + (rows.length ? rows.map(r => '<tr>' + r.map((c, i) => '<td' + (right.indexOf(i) >= 0 ? ' class="n"' : '') + '>' + escHtml(c) + '</td>').join('') + '</tr>').join('') : '<tr><td colspan="' + heads.length + '">None.</td></tr>') + '</tbody></table>';
+}
+function otActive(members) { return members.filter(m => !m.status || m.status === 'Active'); }
+function otXls(name, sheetName, widths, rows) { dcSave(name, xlBook([{ name: sheetName, widths, rows }]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); }
+
+/* ---- Hub ---- */
+function otOpen() {
+  const r = otRole(), staff = ['admin', 'chairperson', 'official', 'bookkeeper'].includes(r), top = ['admin', 'chairperson'].includes(r);
+  if (!staff) { alert('Office tools are for the Admin, Chairperson, Officials and Bookkeeper.'); return; }
+  const items = [
+    ['rr', '🧾', 'Receipt register', 'All receipts issued, daily totals, print or Excel', true],
+    ['mc', '🔒', 'Month-end closing', 'Check a month, then lock it', true],
+    ['ar', '⏰', 'Savings arrears & reminders', 'Who missed KES 200 a month, with WhatsApp message', true],
+    ['rs', '📌', 'Resolutions tracker', 'Resolutions with owner, due date and status', true],
+    ['dv', '💹', 'Dividend worksheet', 'Share of surplus per member (only if By-laws/AGM allow)', top],
+    ['an', '📘', 'Annual return pack', 'Membership, shares, savings, loans, income and expenditure', top || r === 'bookkeeper'],
+    ['gr', '🌾', 'NAVCDP monthly report', 'Grant status report for a chosen month', true],
+    ['bk', '💾', 'Backup status', 'When the last backup was taken; back up now', r === 'admin']
+  ].filter(x => x[4]);
+  const ov = otModal('🗂 Office tools', '<p style="font-size:12px;color:#555;margin:6px 0">Tap a tool.</p>' + items.map(x => '<button type="button" class="otGo" data-k="' + x[0] + '" style="display:block;width:100%;text-align:left;margin:6px 0;padding:10px;border:1px solid #cfd8dc;border-radius:10px;background:#f5faf6;cursor:pointer;"><b>' + x[1] + ' ' + x[2] + '</b><br><span style="font-size:12px;color:#555">' + x[3] + '</span></button>').join(''));
+  const fn = { rr: rrOpen, mc: mcOpen, ar: arOpen, rs: rsOpen, dv: dvOpen, an: anOpen, gr: grOpen, bk: bkOpen };
+  ov.querySelectorAll('.otGo').forEach(b => b.onclick = () => fn[b.dataset.k]().catch(e => alert('Could not open: ' + e.message)));
+}
+
+/* ---- 1. Receipt register ---- */
+async function rrOpen() {
+  const all = await getCollectionEntriesWithId('tablebanking', 'receipts');
+  const meta = await getCollectionEntriesWithId('tablebanking', 'ekfs_meta'), st = meta.find(x => x.__id === 'receipt-start');
+  const now = new Date(), from0 = now.toISOString().slice(0, 8) + '01';
+  const ov = otModal('🧾 Receipt register', '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0"><label style="font-size:13px">From <input type="date" id="rrF" value="' + from0 + '"></label><label style="font-size:13px">To <input type="date" id="rrT" value="' + otToday() + '"></label></div><div id="rrOut"></div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn-primary btn-small" id="rrP">🖨 Print</button><button class="btn-secondary btn-small" id="rrX">⬇ Excel</button></div>' +
+    (otRole() === 'admin' ? '<hr><div style="font-size:12px">Continue from a paper receipt book: next system receipt number <input type="number" id="rrN" min="1" style="width:90px" value="' + (st ? st.next : '') + '"> <button class="btn-secondary btn-small" id="rrS">Save</button> <span style="color:#777">(numbers already issued are never reused)</span></div>' : ''));
+  const q = s => ov.querySelector(s); let cur = [];
+  const draw = () => {
+    const f = q('#rrF').value, t = q('#rrT').value;
+    cur = all.filter(r => (!f || String(r.date || '') >= f) && (!t || String(r.date || '') <= t)).sort((a, b) => String(a.no).localeCompare(String(b.no)));
+    const tot = cur.reduce((a, r) => a + otNum(r.amount), 0), byDay = {}; cur.forEach(r => { byDay[r.date] = (byDay[r.date] || 0) + otNum(r.amount); });
+    q('#rrOut').innerHTML = '<div style="font-size:13px;margin:6px 0"><b>' + cur.length + '</b> receipts · total <b>KES ' + otK(tot) + '</b></div>' + otTable(['Receipt no.', 'Date', 'Member', 'For', 'Amount'], cur.map(r => [r.no, r.date || '', (r.memberName || '') + (r.memberNo ? ' (' + r.memberNo + ')' : ''), r.kind || '', otK(r.amount)]), [4]) +
+      '<div style="font-size:12px;margin-top:8px"><b>By day:</b> ' + (Object.keys(byDay).sort().map(d => escHtml(d) + ' = ' + otK(byDay[d])).join(' · ') || '—') + '</div>';
+  };
+  q('#rrF').onchange = draw; q('#rrT').onchange = draw; draw();
+  q('#rrP').onclick = () => { const tot = cur.reduce((a, r) => a + otNum(r.amount), 0), byDay = {}; cur.forEach(r => { byDay[r.date] = (byDay[r.date] || 0) + otNum(r.amount); });
+    openPrintWindow('Receipt register', '<h2>Receipt register: ' + escHtml(q('#rrF').value) + ' to ' + escHtml(q('#rrT').value) + '</h2>' + otPrintTable(['Receipt no.', 'Date', 'Member', 'For', 'Amount (KES)'], cur.map(r => [r.no, r.date || '', (r.memberName || '') + (r.memberNo ? ' (' + r.memberNo + ')' : ''), r.kind || '', otK(r.amount)]), [4]) +
+      '<p><b>Total: KES ' + otK(tot) + ' (' + cur.length + ' receipts)</b></p><h2>Totals by day</h2>' + otPrintTable(['Date', 'Amount (KES)'], Object.keys(byDay).sort().map(d => [d, otK(byDay[d])]), [1]) + '<div class="sig"><div>Treasurer</div><div>Supervisory Committee</div></div>' + pbStamp()); };
+  q('#rrX').onclick = () => otXls('EKFS_Receipt_Register.xlsx', 'Receipts', [16, 12, 34, 16, 14], [{ cells: ['Receipt no.', 'Date', 'Member', 'For', 'Amount (KES)'], style: 1 }].concat(cur.map(r => ({ cells: [r.no, r.date || '', (r.memberName || '') + (r.memberNo ? ' (' + r.memberNo + ')' : ''), r.kind || '', otNum(r.amount)] }))));
+  if (q('#rrS')) q('#rrS').onclick = async () => { const n = parseInt(q('#rrN').value, 10); if (!(n > 0)) { alert('Enter a number of 1 or more.'); return; } await otCol('ekfs_meta').doc('receipt-start').set({ next: n, by: getSession().username, at: new Date().toISOString() }); alert('Saved. The next new receipt will be EKFS-R-' + String(n).padStart(5, '0') + ' or higher.'); };
+}
+
+/* ---- 3. Month-end closing ---- */
+async function mcClosed() { const rows = await getCollectionEntriesWithId('tablebanking', 'month-closed'); const s = new Set(); rows.forEach(r => { if (r.status === 'closed') s.add(r.__id); }); return s; }
+async function mcGuard(date, what) {
+  const m = otMonth(date); if (!/^\d{4}-\d{2}$/.test(m)) return true;
+  let closed; try { closed = await mcClosed(); } catch (e) { return true; }
+  if (!closed.has(m)) return true;
+  const r = otRole();
+  if (r !== 'admin' && r !== 'chairperson') { alert('The month ' + m + ' is closed. Only the Chairperson or Admin can change it, and must give a reason.'); return false; }
+  const why = prompt('The month ' + m + ' is CLOSED.\nType the reason for this ' + what + ' (it is recorded in the audit log):');
+  if (!why || !why.trim()) return false;
+  try { auditLog('closed-month change', currentRecord, '', m + ' · ' + what + ' · ' + why.trim()); } catch (e) {}
+  return true;
+}
+async function mcFigures() {
+  const [c, rp, li, fn, ex, ox] = await Promise.all(['contribution-record', 'loan-repayment', 'loan-issued', 'fines-penalties', 'expenditure', 'other-expenses'].map(x => getCollectionEntriesWithId('tablebanking', x)));
+  const F = {}; const g = m => F[m] || (F[m] = { sav: 0, share: 0, rep: 0, iss: 0, fine: 0, exp: 0, n: 0 });
+  c.forEach(r => { const m = otMonth(r.date); if (!m || r.contributionType === 'Other amount') return; const a = otNum(r.amount); if (r.contributionType === 'Share') g(m).share += a; else g(m).sav += a; g(m).n++; });
+  rp.forEach(r => { const m = otMonth(r.date); if (m) g(m).rep += otNum(r.amountRepaid); });
+  li.forEach(r => { const m = otMonth(r.date); if (m) g(m).iss += otNum(r.loanAmount); });
+  fn.forEach(r => { const m = otMonth(r.date); if (m) g(m).fine += otNum(r.amount); });
+  ex.concat(ox).forEach(r => { const m = otMonth(r.date); if (m) g(m).exp += otNum(r.amount); });
+  return F;
+}
+async function mcOpen() {
+  const [F, rows] = await Promise.all([mcFigures(), getCollectionEntriesWithId('tablebanking', 'month-closed')]);
+  const by = {}; rows.forEach(r => by[r.__id] = r);
+  const months = []; const d = new Date(); d.setDate(1); for (let i = 0; i < 18; i++) { months.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); d.setMonth(d.getMonth() - 1); }
+  const can = ['admin', 'chairperson'].includes(otRole());
+  const ov = otModal('🔒 Month-end closing', '<p style="font-size:12px;color:#555;margin:6px 0">Check the figures with the Treasurer, then Close the month. After that, adding, editing or deleting entries dated in that month needs the Chairperson or Admin and a reason (recorded in the audit log).</p><div id="mcList"></div>');
+  const draw = () => {
+    ov.querySelector('#mcList').innerHTML = otTable(['Month', 'Savings', 'Repaid', 'Loans issued', 'Fines', 'Spent', 'Status', ''], months.map(m => { const f = F[m] || { sav: 0, rep: 0, iss: 0, fine: 0, exp: 0 }, r = by[m], closed = r && r.status === 'closed';
+      return [m, otK(f.sav), otK(f.rep), otK(f.iss), otK(f.fine), otK(f.exp), { html: closed ? '<b style="color:#1b5e20">🔒 Closed</b><br><span style="font-size:11px;color:#777">' + escHtml(r.by || '') + ' ' + escHtml(String(r.at || '').slice(0, 10)) + '</span>' : 'Open' },
+        { html: '<button class="btn-secondary btn-small mcPr" data-m="' + m + '">🖨</button>' + (can && !closed ? ' <button class="btn-primary btn-small mcCl" data-m="' + m + '">Close</button>' : '') + (otRole() === 'admin' && closed ? ' <button class="btn-danger btn-small mcRe" data-m="' + m + '">Reopen</button>' : '') }]; }), [1, 2, 3, 4, 5]);
+    ov.querySelectorAll('.mcPr').forEach(b => b.onclick = () => { const m = b.dataset.m, f = F[m] || { sav: 0, share: 0, rep: 0, iss: 0, fine: 0, exp: 0 }, r = by[m];
+      openPrintWindow('Month-end ' + m, '<h2>Month-end closing sheet — ' + escHtml(m) + '</h2>' + otPrintTable(['Item', 'Amount (KES)'], [['Savings received', otK(f.sav)], ['Share contributions received', otK(f.share)], ['Loan repayments received', otK(f.rep)], ['Loans issued', otK(f.iss)], ['Fines and penalties', otK(f.fine)], ['Expenditure', otK(f.exp)]], [1]) +
+        '<p>Status: <b>' + (r && r.status === 'closed' ? 'CLOSED by ' + escHtml(r.by || '') + ' on ' + escHtml(String(r.at || '').slice(0, 10)) : 'Open') + '</b></p><table><tr><th>Cash counted</th><th>M-Pesa / bank balance</th><th>Difference</th></tr><tr><td>&nbsp;<br>&nbsp;</td><td></td><td></td></tr></table><div class="sig"><div>Treasurer</div><div>Chairperson</div><div>Supervisory Committee</div></div>' + pbStamp()); });
+    ov.querySelectorAll('.mcCl').forEach(b => b.onclick = async () => { const m = b.dataset.m; if (!confirm('Close ' + m + '? Changes to that month will need a reason from the Chairperson or Admin.')) return;
+      const rec = { month: m, status: 'closed', by: getSession().username, at: new Date().toISOString(), snapshot: JSON.stringify(F[m] || {}) }; await otCol('month-closed').doc(m).set(rec); by[m] = Object.assign({ __id: m }, rec); try { auditLog('month closed', 'month-closed', m, m); } catch (e) {} draw(); });
+    ov.querySelectorAll('.mcRe').forEach(b => b.onclick = async () => { const m = b.dataset.m, why = prompt('Reason for reopening ' + m + ':'); if (!why || !why.trim()) return;
+      await otCol('month-closed').doc(m).set({ month: m, status: 'open', reopenedBy: getSession().username, reopenReason: why.trim(), at: new Date().toISOString() }); by[m] = { __id: m, status: 'open' }; try { auditLog('month reopened', 'month-closed', m, m + ' · ' + why.trim()); } catch (e) {} draw(); });
+  };
+  draw();
+}
+entryForm.addEventListener('submit', async function (ev) {
+  if (window.__mcPass) { window.__mcPass = false; return; }
+  if (currentCategory !== 'tablebanking' || OT_GATED.indexOf(currentRecord) < 0) return;
+  const di = document.getElementById('field_date'), nd = di ? di.value : '', od = editingRowData && editingRowData.date, dates = [nd];
+  if (editingRowId && od && od !== nd) dates.push(od);
+  ev.stopImmediatePropagation(); ev.preventDefault();
+  for (const d of dates) { if (!(await mcGuard(d, editingRowId ? 'edit' : 'new entry'))) return; }
+  window.__mcPass = true; entryForm.requestSubmit();
+}, true);
+
+/* ---- 10. Backup status ---- */
+async function bkStamp() { try { await otCol('ekfs_meta').doc('backup').set({ at: new Date().toISOString(), by: (getSession() || {}).username || '' }); } catch (e) {} }
+async function bkInfo() { try { const m = await getCollectionEntriesWithId('tablebanking', 'ekfs_meta'), b = m.find(x => x.__id === 'backup'); if (!b || !b.at) return { days: null, by: '' }; return { days: Math.floor((Date.now() - new Date(b.at).getTime()) / 864e5), by: b.by || '', at: b.at }; } catch (e) { return { days: null, by: '' }; } }
+async function bkBanner() {
+  const old = document.getElementById('bkBanner'); if (old) old.remove();
+  if (otRole() !== 'admin') return;
+  const i = await bkInfo(); if (i.days != null && i.days <= 7) return;
+  const nav = document.getElementById('otNavBtn') ? document.getElementById('otNavBtn').parentNode : null; if (!nav) return;
+  const b = document.createElement('div'); b.id = 'bkBanner'; b.style.cssText = 'background:#fdecea;color:#b71c1c;border:1px solid #f5c6cb;border-radius:8px;padding:8px 10px;margin:6px 0;font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap';
+  b.innerHTML = '⚠ <span style="flex:1">' + (i.days == null ? 'No backup recorded yet.' : 'Last backup was ' + i.days + ' days ago.') + ' Please back up (every Friday).</span><button type="button" class="btn-primary btn-small" id="bkNow">Back up now</button>';
+  nav.parentNode.insertBefore(b, nav); b.querySelector('#bkNow').onclick = async () => { try { await backupDownload(false); b.remove(); } catch (e) { alert('Backup failed: ' + e.message); } };
+}
+async function bkOpen() {
+  const i = await bkInfo();
+  const ov = otModal('💾 Backup status', '<p style="font-size:14px">' + (i.days == null ? '<b style="color:#b71c1c">No backup recorded yet.</b>' : 'Last backup: <b style="color:' + (i.days > 7 ? '#b71c1c' : '#1b5e20') + '">' + i.days + ' day(s) ago</b> by ' + escHtml(i.by) + ' (' + escHtml(String(i.at).slice(0, 10)) + ')') + '</p><p style="font-size:12px;color:#555">Back up every Friday. Save the file on your phone and email it to the SACCO address.</p><button class="btn-primary" id="bkGo">Back up now</button> <button class="btn-secondary" id="bkGo2">Back up with documents</button><div id="bkM" style="font-size:12px;margin-top:6px"></div>');
+  const go = async inc => { ov.querySelector('#bkM').textContent = 'Preparing…'; try { const n = await backupDownload(inc); ov.querySelector('#bkM').textContent = 'Done — ' + n + ' entries saved to the file.'; const b = document.getElementById('bkBanner'); if (b) b.remove(); } catch (e) { ov.querySelector('#bkM').textContent = 'Backup failed: ' + e.message; } };
+  ov.querySelector('#bkGo').onclick = () => go(false); ov.querySelector('#bkGo2').onclick = () => go(true);
+}
+
+/* ---- 5. Savings arrears & reminders ---- */
+function arPhone(p) { let d = String(p || '').replace(/\D/g, ''); if (d.length >= 9) return '254' + d.slice(-9); return ''; }
+async function arOpen() {
+  const [members, contrib] = await Promise.all([getCollectionEntriesWithId('tablebanking', 'member-register'), getCollectionEntriesWithId('tablebanking', 'contribution-record')]);
+  const act = otActive(members), min = (typeof PORTAL_GOAL !== 'undefined' && PORTAL_GOAL.monthMin) || 200;
+  const sav = {}; contrib.filter(r => isSavRec(r) && r.contributionType !== 'Other amount').forEach(r => { const k = String(r.memberName || '').trim().toLowerCase(), m = otMonth(r.date); if (!k || !m) return; (sav[k] = sav[k] || {})[m] = ((sav[k] || {})[m] || 0) + otNum(r.amount); });
+  const ov = otModal('⏰ Savings arrears & reminders', '<div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap"><label style="font-size:13px">Look back <select id="arN"><option>1</option><option>2</option><option selected>3</option><option>6</option><option>12</option></select> completed month(s)</label><span style="font-size:12px;color:#555">A month counts as saved at KES ' + min + ' or more.</span></div><div id="arOut"></div><button class="btn-secondary btn-small" id="arP" style="margin-top:8px">🖨 Print list</button>');
+  let list = [];
+  const draw = () => {
+    const n = parseInt(ov.querySelector('#arN').value, 10), now = new Date(), ms = []; for (let i = 1; i <= n; i++) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); ms.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); }
+    list = act.map(m => { const k = String(m.memberName || '').trim().toLowerCase(), s = sav[k] || {}, jm = otMonth(m.dateJoined), miss = ms.filter(x => (!jm || x >= jm) && (s[x] || 0) < min), keys = Object.keys(s).sort(), tot = Object.values(s).reduce((a, b) => a + b, 0); return { m, miss, last: keys.length ? keys[keys.length - 1] : '—', tot, ph: arPhone(m.contact) }; })
+      .filter(x => x.miss.length).sort((a, b) => b.miss.length - a.miss.length || extractMemberNum(a.m.memberNumber) - extractMemberNum(b.m.memberNumber));
+    ov.querySelector('#arOut').innerHTML = '<div style="font-size:13px;margin:6px 0"><b>' + list.length + '</b> of ' + act.length + ' active members missed at least one month.</div>' + otTable(['No.', 'Name', 'Missed', 'Last saved', 'Savings', 'Remind'], list.map(x => { const msg = 'Dear ' + (x.m.memberName || 'member') + ', our records show no savings of KES ' + min + ' or more for ' + x.miss.join(', ') + '. Please save through Paybill 400200, account 1008085. Thank you. East Kamagak Farmers SACCO.';
+      return [x.m.memberNumber || '', x.m.memberName || '', x.miss.length + ' (' + x.miss.join(', ') + ')', x.last, otK(x.tot), { html: x.ph ? '<a href="https://wa.me/' + x.ph + '?text=' + encodeURIComponent(msg) + '" target="_blank">WhatsApp</a> · <a href="sms:+' + x.ph + '?body=' + encodeURIComponent(msg) + '">SMS</a>' : '<span style="color:#b71c1c">no phone</span>' }]; }), [4]);
+  };
+  ov.querySelector('#arN').onchange = draw; draw();
+  ov.querySelector('#arP').onclick = () => openPrintWindow('Savings arrears', '<h2>Savings arrears — last ' + ov.querySelector('#arN').value + ' month(s)</h2>' + otPrintTable(['No.', 'Name', 'Phone', 'Months missed', 'Last saved', 'Savings (KES)'], list.map(x => [x.m.memberNumber || '', x.m.memberName || '', x.m.contact || '', x.miss.join(', '), x.last, otK(x.tot)]), [5]) + pbStamp());
+}
+
+/* ---- 7. Resolutions tracker ---- */
+async function rsOpen() {
+  const ov = otModal('📌 Resolutions tracker', '<div id="rsForm" style="display:grid;gap:6px;margin:8px 0;border:1px solid #cfd8dc;border-radius:8px;padding:8px"><b style="font-size:13px">New resolution</b><input id="rsD" type="date" value="' + otToday() + '"><input id="rsM" placeholder="Meeting (e.g. Committee 12 Nov)"><textarea id="rsT" rows="2" placeholder="Resolution"></textarea><input id="rsO" placeholder="Owner (who will do it)"><label style="font-size:12px">Due date <input id="rsU" type="date"></label><button class="btn-primary btn-small" id="rsAdd">Add</button></div><div id="rsList"></div><button class="btn-secondary btn-small" id="rsP" style="margin-top:8px">🖨 Print</button>');
+  let rows = [];
+  const load = async () => { rows = (await getCollectionEntriesWithId('tablebanking', 'resolutions')).sort((a, b) => (a.status === 'Done') - (b.status === 'Done') || String(a.due || '9999').localeCompare(String(b.due || '9999'))); draw(); };
+  const can = ['admin', 'chairperson', 'official'].includes(otRole()), top = ['admin', 'chairperson'].includes(otRole()), today = otToday();
+  const draw = () => {
+    const over = rows.filter(r => r.status !== 'Done' && r.due && r.due < today).length;
+    ov.querySelector('#rsList').innerHTML = '<div style="font-size:13px;margin:6px 0">' + rows.filter(r => r.status !== 'Done').length + ' open' + (over ? ' · <b style="color:#b71c1c">' + over + ' overdue</b>' : '') + ' · ' + rows.filter(r => r.status === 'Done').length + ' done</div>' +
+      otTable(['Date', 'Resolution', 'Owner', 'Due', 'Status', ''], rows.map(r => [r.date || '', (r.meeting ? r.meeting + ': ' : '') + (r.text || ''), r.owner || '', r.due || '', { html: r.status === 'Done' ? '<span style="color:#1b5e20">✔ Done</span>' : (r.due && r.due < today ? '<b style="color:#b71c1c">Overdue</b>' : 'Open') },
+        { html: (can && r.status !== 'Done' ? '<button class="btn-primary btn-small rsDn" data-i="' + r.__id + '">Done</button> ' : '') + (top ? '<button class="btn-danger btn-small rsDl" data-i="' + r.__id + '">✕</button>' : '') }]));
+    ov.querySelectorAll('.rsDn').forEach(b => b.onclick = async () => { await otCol('resolutions').doc(b.dataset.i).update({ status: 'Done', doneAt: otToday(), doneBy: getSession().username }); load(); });
+    ov.querySelectorAll('.rsDl').forEach(b => b.onclick = async () => { if (!confirm('Delete this resolution?')) return; await otCol('resolutions').doc(b.dataset.i).delete(); try { auditLog('deleted', 'resolutions', b.dataset.i, ''); } catch (e) {} load(); });
+  };
+  ov.querySelector('#rsAdd').onclick = async () => { const t = ov.querySelector('#rsT').value.trim(); if (!t) { alert('Type the resolution.'); return; } await otCol('resolutions').add({ date: ov.querySelector('#rsD').value, meeting: ov.querySelector('#rsM').value.trim(), text: t, owner: ov.querySelector('#rsO').value.trim(), due: ov.querySelector('#rsU').value, status: 'Open', by: getSession().username }); ov.querySelector('#rsT').value = ''; load(); };
+  ov.querySelector('#rsP').onclick = () => openPrintWindow('Resolutions', '<h2>Resolutions tracker</h2>' + otPrintTable(['Date', 'Resolution', 'Owner', 'Due', 'Status'], rows.map(r => [r.date || '', (r.meeting ? r.meeting + ': ' : '') + (r.text || ''), r.owner || '', r.due || '', r.status === 'Done' ? 'Done ' + (r.doneAt || '') : (r.due && r.due < today ? 'OVERDUE' : 'Open')])) + pbStamp());
+  load();
+}
+
+/* ---- 6. Dividend worksheet ---- */
+async function dvOpen() {
+  if (!['admin', 'chairperson'].includes(otRole())) { alert('Only the Admin or Chairperson can use the dividend worksheet.'); return; }
+  const members = otActive(await getCollectionEntriesWithId('tablebanking', 'member-register'));
+  const ov = otModal('💹 Dividend worksheet', '<p style="font-size:12px;color:#b71c1c;margin:6px 0">Planning tool only. A dividend may be paid only from a real surplus, after the reserve required by the Co-operative Societies Act and the By-laws, and only if the AGM approves. Confirm with the Commissioner/auditor first.</p><div style="display:grid;gap:6px"><label style="font-size:13px">Surplus for the year (KES) <input type="number" id="dvS" min="0" style="width:140px"></label><label style="font-size:13px">Set aside for reserve (%) <input type="number" id="dvR" min="0" max="100" value="0" style="width:80px"></label><label style="font-size:13px"><input type="checkbox" id="dvF" checked> Fully paid shares only (KES 1,000 or more)</label></div><div id="dvOut" style="margin-top:8px"></div><div style="display:flex;gap:8px;margin-top:8px"><button class="btn-secondary btn-small" id="dvP">🖨 Print</button><button class="btn-secondary btn-small" id="dvX">⬇ Excel</button></div>');
+  let calc = null;
+  const draw = () => {
+    const s = otNum(ov.querySelector('#dvS').value), r = Math.min(100, Math.max(0, otNum(ov.querySelector('#dvR').value))), full = ov.querySelector('#dvF').checked;
+    const el = members.filter(m => otNum(m.shareCapital) >= (full ? 1000 : 1)).sort((a, b) => extractMemberNum(a.memberNumber) - extractMemberNum(b.memberNumber));
+    const shares = el.reduce((a, m) => a + otNum(m.shareCapital), 0), net = s * (1 - r / 100), rate = shares ? net / shares : 0;
+    calc = { s, r, net, rate, shares, rows: el.map(m => [m.memberNumber || '', m.memberName || '', otNum(m.shareCapital), Math.round(otNum(m.shareCapital) * rate * 100) / 100]) };
+    const paid = calc.rows.reduce((a, x) => a + x[3], 0);
+    ov.querySelector('#dvOut').innerHTML = '<div style="font-size:13px;margin-bottom:6px">Reserve: KES ' + otK(s - net) + ' · To share: <b>KES ' + otK(net) + '</b> · Eligible members: ' + el.length + ' · Total shares: KES ' + otK(shares) + ' · <b>Dividend rate: ' + (rate * 100).toFixed(2) + '% of shares</b> · Check total: KES ' + otK(paid) + '</div>' + otTable(['No.', 'Name', 'Shares', 'Dividend'], calc.rows.map(x => [x[0], x[1], otK(x[2]), otK(x[3])]), [2, 3]);
+  };
+  ['#dvS', '#dvR', '#dvF'].forEach(x => ov.querySelector(x).oninput = draw); draw();
+  ov.querySelector('#dvP').onclick = () => openPrintWindow('Dividend worksheet', '<h2>Dividend worksheet (DRAFT — subject to AGM approval)</h2><p>Surplus KES ' + otK(calc.s) + ' · reserve ' + calc.r + '% · to share KES ' + otK(calc.net) + ' · rate ' + (calc.rate * 100).toFixed(2) + '% of shares</p>' + otPrintTable(['No.', 'Name', 'Shares (KES)', 'Dividend (KES)'], calc.rows.map(x => [x[0], x[1], otK(x[2]), otK(x[3])]), [2, 3]) + '<div class="sig"><div>Treasurer</div><div>Chairperson</div><div>Supervisory Committee</div></div>' + pbStamp());
+  ov.querySelector('#dvX').onclick = () => otXls('EKFS_Dividend_Worksheet.xlsx', 'Dividend', [12, 34, 14, 14], [{ cells: ['Member No.', 'Name', 'Shares (KES)', 'Dividend (KES)'], style: 1 }].concat(calc.rows.map(x => ({ cells: x }))));
+}
+
+/* ---- 8. Annual return pack ---- */
+async function anOpen() {
+  const yr = new Date().getFullYear();
+  const ov = otModal('📘 Annual return pack', '<div style="margin:8px 0"><label style="font-size:13px">Year <select id="anY">' + [yr, yr - 1, yr - 2].map(y => '<option>' + y + '</option>').join('') + '</select></label> <button class="btn-primary btn-small" id="anGo">Build</button></div><p style="font-size:12px;color:#555">Draft figures from the system, for the Treasurer and auditor to check. Confirm the exact format with the Cooperatives office.</p><div id="anOut"></div>');
+  ov.querySelector('#anGo').onclick = async () => {
+    const Y = ov.querySelector('#anY').value, E = Y + '-12-31', S = Y + '-01-01';
+    const [mem, con, li, rp, fn, ex, ox] = await Promise.all(['member-register', 'contribution-record', 'loan-issued', 'loan-repayment', 'fines-penalties', 'expenditure', 'other-expenses'].map(x => getCollectionEntriesWithId('tablebanking', x)));
+    const act = otActive(mem).filter(m => !m.dateJoined || m.dateJoined <= E), inY = r => String(r.date || '') >= S && String(r.date || '') <= E, upto = r => String(r.date || '') <= E;
+    const sex = x => act.filter(m => String(m.sex || '').toLowerCase().startsWith(x)).length;
+    const joined = act.filter(m => String(m.dateJoined || '').slice(0, 4) === Y), sum = (a, f) => a.reduce((t, r) => t + otNum(f(r)), 0);
+    const fees = sum(joined, m => m.registrationFee), shares = sum(act, m => m.shareCapital);
+    const savY = sum(con.filter(r => isSavRec(r) && r.contributionType !== 'Other amount' && inY(r)), r => r.amount), savAll = sum(con.filter(r => isSavRec(r) && r.contributionType !== 'Other amount' && upto(r)), r => r.amount);
+    const liY = li.filter(inY), rpY = rp.filter(inY), issY = sum(liY, r => r.loanAmount), intY = sum(rpY, r => r.interestPortion), repY = sum(rpY, r => r.amountRepaid);
+    const outst = sum(li.filter(upto), r => r.loanAmount) - sum(rp.filter(upto), r => r.principalPortion);
+    const insF = sum(liY, r => r.insuranceFee), prF = sum(liY, r => r.processingFee), fines = sum(fn.filter(inY), r => r.amount), exp = sum(ex.concat(ox).filter(inY), r => r.amount);
+    const inc = fees + intY + insF + prF + fines;
+    const rows = [['MEMBERSHIP (at 31 Dec ' + Y + ')', ''], ['Active members', act.length], ['  Male', sex('m')], ['  Female', sex('f')], ['Joined during ' + Y, joined.length],
+      ['SHARES AND SAVINGS', ''], ['Share capital held (KES)', otK(shares)], ['Savings received in ' + Y + ' (KES)', otK(savY)], ['Total savings to 31 Dec (KES)', otK(savAll)],
+      ['LOANS', ''], ['Loans issued in ' + Y + ' (number)', liY.length], ['Loans issued in ' + Y + ' (KES)', otK(issY)], ['Repayments received in ' + Y + ' (KES)', otK(repY)], ['Loan balance at 31 Dec, approx. (KES)', otK(outst)],
+      ['INCOME (' + Y + ')', ''], ['Registration fees', otK(fees)], ['Loan interest received', otK(intY)], ['Insurance fees', otK(insF)], ['Processing fees', otK(prF)], ['Fines and penalties', otK(fines)], ['Total income (KES)', otK(inc)],
+      ['EXPENDITURE (' + Y + ')', ''], ['Expenditure and other expenses (KES)', otK(exp)], ['SURPLUS / (DEFICIT) (KES)', otK(inc - exp)]];
+    ov.querySelector('#anOut').innerHTML = otTable(['Item', 'Value'], rows.map(r => r), [1]) + '<button class="btn-secondary btn-small" id="anP" style="margin-top:8px">🖨 Print</button> <button class="btn-secondary btn-small" id="anX">⬇ Excel</button>';
+    ov.querySelector('#anP').onclick = () => openPrintWindow('Annual return ' + Y, '<h2>Annual return data pack — ' + Y + ' (DRAFT)</h2>' + otPrintTable(['Item', 'Value'], rows, [1]) + '<p style="font-size:12px">Figures come from the system as entered. Loan balance uses principal repaid. To be verified by the Treasurer and the Supervisory Committee before submission.</p><div class="sig"><div>Treasurer</div><div>Chairperson</div><div>Secretary</div></div>' + pbStamp());
+    ov.querySelector('#anX').onclick = () => otXls('EKFS_Annual_Return_' + Y + '.xlsx', 'Annual return', [46, 18], [{ cells: ['Item', 'Value'], style: 1 }].concat(rows.map(r => ({ cells: [r[0], typeof r[1] === 'number' ? r[1] : String(r[1])] }))));
+  };
+}
+
+/* ---- 9. NAVCDP monthly report ---- */
+async function grOpen() {
+  const d = new Date(), def = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  const ov = otModal('🌾 NAVCDP monthly report', '<p style="font-size:12px;color:#555">Grant status report: spending by budget line, mobilization counts and payments.</p><label style="font-size:13px">Month <input type="month" id="grM" value="' + def + '"></label> <button class="btn-primary btn-small" id="grGo">🖨 Print report</button>');
+  ov.querySelector('#grGo').onclick = () => printGrantStatusReport(ov.querySelector('#grM').value).catch(e => alert('Could not build: ' + e.message));
+}
+
+/* ---- Member portal receipts (member's own payments) ---- */
+function mhReceiptCard(d) {
+  const rows = (d.myContrib || []).filter(c => isSavRec(c) && c.contributionType !== 'Other amount' && c.date && otNum(c.amount) > 0).sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 12);
+  if (!rows.length) return '';
+  return mhCard(mhTitle('🧾', mhLang === 'sw' ? 'RISITI ZANGU' : 'MY RECEIPTS') + '<div style="font-size:12px;color:#555;margin-bottom:6px">' + (mhLang === 'sw' ? 'Gusa kupakua au kuchapisha risiti ya malipo yako.' : 'Tap to print or save a receipt for your payment.') + '</div>' +
+    rows.map(c => '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #eee;font-size:13px;"><span>' + escHtml(c.date) + ' · <b>' + fmtKES(otNum(c.amount)) + '</b></span><button type="button" onclick="rcPrint(' + JSON.stringify(c.memberName) .replace(/"/g, '&quot;') + ',\'' + escHtml(c.__id) + '\')" style="border:1px solid #2e7d32;background:#e8f5e9;border-radius:14px;padding:4px 10px;font-size:12px;">🧾 ' + (mhLang === 'sw' ? 'Risiti' : 'Receipt') + '</button></div>').join(''));
+}
+
 function setupPrintButtons() {
   const nav = document.getElementById('viewNav');
   if (nav && !document.getElementById('printMenuBtn')) {
@@ -4017,6 +4258,7 @@ async function backupDownload(includeFiles) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'EKFS_backup_' + new Date().toISOString().slice(0, 10) + (includeFiles ? '_with-documents' : '') + '.json';
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   try { localStorage.setItem('ekfs_last_backup', String(Date.now())); } catch (e) {}
+  try { bkStamp(); } catch (e) {}
   const n = Object.values(b.data).reduce((x, o) => x + Object.keys(o).length, 0);
   return n;
 }
@@ -5562,7 +5804,7 @@ function printRegForm(m) { openPrintWindow(m && m.memberName ? 'Registration for
 async function mpCollect(member) {
   const n = member.memberName;
   const [contrib, loans, repay, fines, guar, files] = await Promise.all([
-    getCollectionEntries('tablebanking', 'contribution-record'),
+    getCollectionEntriesWithId('tablebanking', 'contribution-record'),
     getCollectionEntriesWithId('tablebanking', 'loan-issued'),
     getCollectionEntriesWithId('tablebanking', 'loan-repayment'),
     getCollectionEntries('tablebanking', 'fines-penalties'),
@@ -6586,6 +6828,7 @@ function cardNavSetup() {
   if ((getSession() || {}).role === 'admin' && !document.getElementById('stiNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'stiNavBtn'; b.textContent = '📥 Statement import'; b.style.cssText = 'flex:0 0 auto;background:#1f3864!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', stiOpen); nav.appendChild(b); }
   if ((getSession() || {}).role === 'admin' && !document.getElementById('rnNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'rnNavBtn'; b.textContent = '🔢 Member numbers'; b.style.cssText = 'flex:0 0 auto;background:#4a148c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', rnOpen); nav.appendChild(b); }
   if ((getSession() || {}).role === 'admin' && !document.getElementById('stNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'stNavBtn'; b.textContent = '🔁 Share transfer'; b.style.cssText = 'flex:0 0 auto;background:#1f3864!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', stOpen); nav.appendChild(b); }
+  if (['admin', 'chairperson', 'official', 'bookkeeper'].includes((getSession() || {}).role) && !document.getElementById('otNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'otNavBtn'; b.textContent = '🗂 Office tools'; b.style.cssText = 'flex:0 0 auto;background:#00695c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', otOpen); nav.appendChild(b); setTimeout(() => { try { bkBanner(); } catch (e) {} }, 1500); }
   if (['admin', 'chairperson', 'official'].includes((getSession() || {}).role) && !document.getElementById('msNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'msNavBtn'; b.textContent = '📑 Membership summary'; b.style.cssText = 'flex:0 0 auto;background:#37474f!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', msOpen); nav.appendChild(b); }
   if (['admin', 'chairperson', 'official'].includes((getSession() || {}).role) && !document.getElementById('dpNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'dpNavBtn'; b.textContent = '🔍 Duplicates'; b.style.cssText = 'flex:0 0 auto;background:#b71c1c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', dpOpen); nav.appendChild(b); }
   { const w = nav.querySelector('[data-v=ward]'); if (w) { let ref = w; ['idcNavBtn', 'crqNavBtn', 'attNavBtn', 'scanNavBtn'].forEach(id => { const b = document.getElementById(id); if (b) { if (ref.nextElementSibling !== b) ref.after(b); ref = b; } }); } }
@@ -7928,6 +8171,7 @@ async function memberHomeRender(memberName) {
     '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;">' + months.map(m => { const ok = m.amt >= PORTAL_GOAL.monthMin, hgt = m.amt > 0 ? Math.max(8, Math.round(m.amt / mx * 34)) : 3; return '<div title="' + escHtml(m.key) + ': ' + k(m.amt) + '" style="text-align:center;border-radius:8px;padding:5px 2px;background:' + (ok ? '#e8f5e9' : '#f1f1f1') + ';"><div style="height:36px;display:flex;align-items:flex-end;justify-content:center;"><div style="width:60%;height:' + hgt + 'px;background:' + (ok ? '#43a047' : '#bdbdbd') + ';border-radius:3px 3px 0 0;"></div></div><div style="font-size:11px;font-weight:700;">' + m.lbl + '</div><div style="font-size:10.5px;color:#555;">' + (m.amt > 0 ? mhShort(m.amt) : '–') + '</div></div>'; }).join('') + '</div>' +
     '<div style="font-size:11px;color:#777;margin-top:5px;">' + t('Green = saved') + ' ' + k(PORTAL_GOAL.monthMin) + ' ' + t('or more that month.') + '</div>' +
     '<div style="margin-top:10px;padding:10px;border-radius:12px;background:#eef4fb;font-size:13px;color:#222;"><div style="font-size:11px;font-weight:800;color:#1565c0;margin-bottom:2px;">📈 ' + t('MY SAVING PLAN') + '</div>' + plan + '</div>') + '<div data-slot="summary"></div>';
+  try { sv += mhReceiptCard(d); } catch (e) {}
   const hasPaidLoan = d.loanRows.some(r => r.repaid > 0 && r.bal <= 0.5 && r.l.status !== 'Written Off');
   const badges = [
     [streak >= 2, '🔥', mhLang === 'sw' ? 'Miezi ' + streak + ' mfululizo' : streak + '-month saving streak', mhLang === 'sw' ? 'Weka akiba miezi 2 mfululizo' : 'Save 2 months in a row'],
