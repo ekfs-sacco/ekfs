@@ -904,14 +904,14 @@
   #appShell .layout .panel, #appShell #memberViewContainer .panel{background:#f3f7f4;border:none;border-radius:16px;box-shadow:none;}
   #appShell footer.appfoot{color:#a9c4b2;}
   #appShell footer.appfoot b{color:#5fd08f;}
-  /* ---------- Member portal: Home stays green, other tabs blue (build CF) ---------- */
+  /* ---------- Member portal: Home stays green, other tabs blue (build CG) ---------- */
   body.mh-blue #appShell{background:linear-gradient(#0a1f44,#0d2a5c);}
   body.mh-blue header.topbar{background:linear-gradient(135deg,#0a1f44,#1565c0);}
   body.mh-blue .sync-badge.online{background:#1565c0;}
   body.mh-blue #appShell footer.appfoot{color:#bcd3f2;}
   body.mh-blue #appShell footer.appfoot b{color:#90caf9;}
   body.mh-blue #appShell #memberViewContainer .panel{background:#eef4fb;}
-  body.mh-blue #mhTabBar{border-top:3px solid #1565c0;}
+  #mhTabBar{border-top:3px solid #f2b705 !important;}
   /* ---------- Dashboard (officials only) ---------- */
   .rt-off{display:none!important;}
   #recTabs{display:none;position:sticky;top:0;z-index:30;gap:6px;overflow-x:auto;padding:8px 2px 10px;margin:0 0 10px;background:var(--cream);}
@@ -1063,7 +1063,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CF</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CG</span></p>
   </div>
 </div>
 
@@ -8301,8 +8301,8 @@ function mhShowTab(tab) {
   MH_TABS.forEach(x => { const p = document.getElementById('mhPane-' + x[0]); if (p) p.style.display = x[0] === tab ? 'block' : 'none'; });
   document.querySelectorAll('#mhTabBar button').forEach(b => { const on = b.dataset.tab === tab;
     const bl = tab !== 'home';
-    if (b.dataset.tab === 'pay') { b.style.background = bl ? (on ? '#0d47a1' : '#1565c0') : (on ? '#bf360c' : '#e65100'); b.style.boxShadow = on ? '0 0 0 4px ' + (bl ? '#90caf9' : '#ffcc80') + ',0 4px 10px rgba(0,0,0,.35)' : '0 4px 10px rgba(0,0,0,.35)'; return; }
-    b.style.background = on ? (bl ? '#1565c0' : '#1b5e20') : 'transparent'; b.style.color = on ? '#fff' : '#37474f'; b.style.fontWeight = on ? '800' : '700'; });
+    if (b.dataset.tab === 'pay') { b.style.background = bl ? (on ? '#0d47a1' : '#1565c0') : (on ? '#bf360c' : '#e65100'); b.style.boxShadow = on ? '0 0 0 4px #f2b705,0 4px 10px rgba(0,0,0,.35)' : '0 4px 10px rgba(0,0,0,.35)'; return; }
+    b.style.background = on ? (bl ? '#1565c0' : '#1b5e20') : 'transparent'; b.style.color = on ? '#ffd54f' : '#37474f'; b.style.boxShadow = on ? 'inset 0 -3px 0 #f2b705' : 'none'; b.style.fontWeight = on ? '800' : '700'; });
   try { const c = document.getElementById('memberViewContainer'); window.scrollTo({ top: Math.max(0, c.getBoundingClientRect().top + window.pageYOffset - 70), behavior: 'auto' }); } catch (e) {}
 }
 function mhTitleRow(icon, label) { return '<div style="font-size:20px;font-weight:800;color:#1b5e20;margin:6px 2px 4px;">' + icon + ' ' + label + '</div>'; }
