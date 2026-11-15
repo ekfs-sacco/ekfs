@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CC</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CD</span></p>
   </div>
 </div>
 
@@ -3885,6 +3885,7 @@ async function rcSerial(key, info) {
 }
 // focusId: contribution __id to highlight (receipt for that payment, with all previous); 'reg' = fee+share receipt; 'all' = everything
 async function rcPrint(name, focusId) {
+  await sigEnsure();
   const { m, sav } = await rcData(name);
   if (!m) { alert('Member "' + name + '" was not found in the Member Register.'); return; }
   const fee = rcNum(m.registrationFee), share = rcNum(m.shareCapital);
@@ -4356,7 +4357,8 @@ async function msgSetup(body) {
 /* ===== Official signatures (build CA) ===== */
 var SIG = { loaded: false, on: true, notices: false, items: {}, stamp: '' };
 var SIG_ROLES = [['chair', 'Chairperson', 'Joshua Ouma Ouko'], ['sec', 'Secretary', 'Dancan Onyango Omedo'], ['tre', 'Treasurer', 'Meresia Anyango Oyungo']];
-async function sigLoad() { try { const m = await getCollectionEntriesWithId('tablebanking', 'ekfs_meta'), g = m.find(x => x.__id === 'signatures'); if (g) { SIG.on = g.on !== false; SIG.notices = !!g.notices; SIG.items = { chair: g.chair, sec: g.sec, tre: g.tre }; SIG.stamp = (g.stamp && g.stamp.img) || ''; } } catch (e) {} SIG.loaded = true; }
+async function sigLoad() { SIG.err = ''; try { const ref = db.collection(storageKey('tablebanking', 'ekfs_meta')).doc('signatures'); let snap; try { snap = await ref.get(); } catch (e1) { try { snap = await ref.get({ source: 'cache' }); } catch (e2) { throw e1; } } const g = snap && snap.exists ? snap.data() : null; if (g) { SIG.on = g.on !== false; SIG.notices = !!g.notices; SIG.items = { chair: g.chair, sec: g.sec, tre: g.tre }; SIG.stamp = (g.stamp && g.stamp.img) || ''; } else { SIG.err = 'not-set'; } SIG.loaded = true; } catch (e) { SIG.err = (e && (e.code || e.message)) || 'error'; console.warn('Signatures not loaded', e); } return SIG.loaded; }
+async function sigEnsure() { try { await sigLoad(); } catch (e) {} }
 function sigStampHtml() {
   if (!SIG.stamp) return '';
   const d = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi' }).replace(/\./g, '').toUpperCase();
@@ -4496,7 +4498,7 @@ function stmtHtml(d) {
     '<h2>Repayments</h2><table><tr><th ' + th + '>Date</th><th ' + th + '>Amount</th><th ' + th + '>M-Pesa ref</th></tr>' + rp + '</table>' +
     '<p style="font-size:11px;color:#555;margin-top:10px;">Report any difference to the SACCO office within 14 days.</p><div class="sig"><div>Prepared by</div><div>Member</div></div></div>';
 }
-async function stmtPrintOne(member) { const d = await mpCollect(member); openPrintWindow('Statement — ' + member.memberName, stmtHtml(d)); }
+async function stmtPrintOne(member) { await sigEnsure(); const d = await mpCollect(member); openPrintWindow('Statement — ' + member.memberName, stmtHtml(d)); }
 async function stmtPrintAll() {
   const ms = (await getCollectionEntriesWithId('tablebanking', 'member-register')).filter(m => !m.status || m.status === 'Active');
   let h = ''; for (const m of ms) h += stmtHtml(await mpCollect(m));
@@ -8462,7 +8464,7 @@ async function memberHomeRender(memberName) {
   cardReqPortal(root, member, memberName);
   mhShowTab(mhTab);
   mhAsOfUpdate(); if (!window.__mhNetWired) { window.__mhNetWired = true; window.addEventListener('online', mhAsOfUpdate); window.addEventListener('offline', mhAsOfUpdate); }
-  { const sb = root.querySelector('#mhStmtBtn'); if (sb) sb.onclick = async () => { sb.disabled = true; try { if (!SIG.loaded) await sigLoad(); await stmtPrintOne(member); } catch (e) { alert('Could not prepare the statement: ' + e.message); } sb.disabled = false; }; }
+  { const sb = root.querySelector('#mhStmtBtn'); if (sb) sb.onclick = async () => { sb.disabled = true; try { await stmtPrintOne(member); if (SIG.err && SIG.err !== 'not-set') alert('Note: the official signatures could not be loaded (' + SIG.err + '). Please tell the SACCO office.'); } catch (e) { alert('Could not prepare the statement: ' + e.message); } sb.disabled = false; }; }
   { const eb2 = root.querySelector('#mhEmailBtn'); if (eb2) eb2.onclick = async () => { const v = (prompt('Your email address (so the SACCO can send you notices):', member.email || '') || '').trim(); if (!v) return; if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { alert('That does not look like an email address.'); return; } try { await db.collection(storageKey('tablebanking', 'member-register')).doc(member.__id).update({ email: v }); try { auditLog('email updated by member', 'member-register', member.__id, memberName); } catch (e) {} alert('Saved. Thank you.'); initMemberView(memberName); } catch (e) { alert('Could not save: ' + e.message); } }; }
   const rf = root.querySelector('#mhRefresh'); if (rf) rf.onclick = () => { rf.textContent = '…'; initMemberView(memberName); };
   // ---- wiring ----
