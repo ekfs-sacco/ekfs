@@ -1052,7 +1052,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 14 Nov 2026 · build BZ</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CB</span></p>
   </div>
 </div>
 
@@ -1636,6 +1636,7 @@ setupForm.addEventListener('submit', async (e) => {
 function applyRoleUI(role) {
   manageAccessBtn.style.display = (role === 'admin') ? 'inline-block' : 'none';
   try { setTimeout(msgInit, 300); } catch (e) {}
+  try { setTimeout(sigLoad, 600); } catch (e) {}
 }
 
 // ---------------- Presence (who's online) ----------------
@@ -3912,7 +3913,7 @@ async function rcPrint(name, focusId) {
     '<tr><th>Total paid to date</th><th></th><th class="n">' + fmtKES(fee + share + savTotal) + '</th></tr></table>' +
     (list.length ? '<h2>Savings payments' + (cur ? ' (this payment highlighted)' : '') + '</h2><table><tr><th>#</th><th>Date</th><th>Type</th><th>M-Pesa / Ref.</th><th class="n">Amount</th><th class="n">Running savings</th></tr>' + rows + '</table>' : '') +
     '<p style="margin-top:14px;font-size:12px">Share capital and savings are held under the Co-operative Societies Act and the Society By-laws. Registration fee is non-refundable. Keep this receipt.</p>' +
-    '<div class="sig"><div>' + ((getSession() || {}).role === 'member' ? 'Printed from the Member portal — valid with the SACCO stamp or M-Pesa confirmation' : 'Received by (name &amp; signature)' + (memberUser ? ': ' + escHtml(memberUser) : '')) + '</div><div>Member signature</div></div>' + pbStamp();
+    '<div class="sig"><div>' + ((getSession() || {}).role === 'member' ? 'Printed from the Member portal — valid with the SACCO stamp or M-Pesa confirmation' : 'Received by (name &amp; signature)' + (memberUser ? ': ' + escHtml(memberUser) : '')) + '</div><div>Treasurer</div><div>Member signature</div></div>' + pbStamp();
   try { auditLog('receipt printed', 'receipt', rno, m.memberName + ' · ' + purpose); } catch (e) {}
   openPrintWindow((focusId === 'all' ? 'Statement ' : 'Receipt ') + rno, html);
 }
@@ -4010,10 +4011,11 @@ function otOpen() {
     ['dv', '💹', 'Dividend worksheet', 'Share of surplus per member (only if By-laws/AGM allow)', top],
     ['an', '📘', 'Annual return pack', 'Membership, shares, savings, loans, income and expenditure', top || r === 'bookkeeper'],
     ['gr', '🌾', 'NAVCDP monthly report', 'Grant status report for a chosen month', true],
-    ['bk', '💾', 'Backup status', 'When the last backup was taken; back up now', r === 'admin']
+    ['bk', '💾', 'Backup status', 'When the last backup was taken; back up now', r === 'admin'],
+    ['sg', '✍', 'Signatures & stamp', 'Chairperson, Secretary, Treasurer signatures and the official stamp for printed documents', r === 'admin']
   ].filter(x => x[4]);
   const ov = otModal('🗂 Office tools', '<p style="font-size:12px;color:#555;margin:6px 0">Tap a tool.</p>' + items.map(x => '<button type="button" class="otGo" data-k="' + x[0] + '" style="display:block;width:100%;text-align:left;margin:6px 0;padding:10px;border:1px solid #cfd8dc;border-radius:10px;background:#f5faf6;cursor:pointer;"><b>' + x[1] + ' ' + x[2] + '</b><br><span style="font-size:12px;color:#555">' + x[3] + '</span></button>').join(''));
-  const fn = { rr: rrOpen, mc: mcOpen, ar: arOpen, rs: rsOpen, dv: dvOpen, an: anOpen, gr: grOpen, bk: bkOpen };
+  const fn = { rr: rrOpen, mc: mcOpen, ar: arOpen, rs: rsOpen, dv: dvOpen, an: anOpen, gr: grOpen, bk: bkOpen, sg: sgOpen };
   ov.querySelectorAll('.otGo').forEach(b => b.onclick = () => fn[b.dataset.k]().catch(e => alert('Could not open: ' + e.message)));
 }
 
@@ -4349,6 +4351,53 @@ async function msgSetup(body) {
   body.innerHTML = '<p style="font-size:13px"><b>Status:</b> ' + (GM.clientId ? (gmOk() ? '<span style="color:#1b5e20">Connected</span>' : 'Client ID saved — tap Connect') : '<span style="color:#b71c1c">Not set up</span>') + '</p><ol style="font-size:12.5px;padding-left:18px;line-height:1.5"><li>Open <b>console.cloud.google.com</b> signed in as the SACCO Gmail. Create a project “EKFS”.</li><li><b>APIs &amp; Services → Library</b> → search “Gmail API” → <b>Enable</b>.</li><li><b>OAuth consent screen</b> → External → app name “EKFS System” → support email = the SACCO Gmail → save. Under <b>Test users</b> add the SACCO Gmail.</li><li><b>Credentials → Create credentials → OAuth client ID</b> → type <b>Web application</b>. Under <b>Authorised JavaScript origins</b> add <code>https://ekfs-sacco.github.io</code></li><li>Copy the <b>Client ID</b> (ends with .apps.googleusercontent.com) and paste it below.</li></ol><input id="gsId" placeholder="Client ID" style="width:100%;box-sizing:border-box" value="' + escHtml(GM.clientId) + '"><div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn-primary btn-small" id="gsSave">Save</button><button class="btn-secondary btn-small" id="gsCon">🔗 Connect Gmail</button></div><div id="gsM" style="font-size:12px;margin-top:6px"></div><p style="font-size:11.5px;color:#666">While the Google app is in “Testing”, Google asks you to sign in again about every 7 days, and shows a “not verified” screen: choose Advanced → Continue. The Client ID is not secret; your Gmail password is never stored here.</p>';
   body.querySelector('#gsSave').onclick = async () => { const v = body.querySelector('#gsId').value.trim(); if (!/\.apps\.googleusercontent\.com$/.test(v)) { alert('That does not look like a Client ID. It ends with .apps.googleusercontent.com'); return; } await otCol('ekfs_meta').doc('gmail').set({ clientId: v, by: getSession().username, at: new Date().toISOString() }); GM.clientId = v; body.querySelector('#gsM').textContent = '✔ Saved'; };
   body.querySelector('#gsCon').onclick = async () => { try { if (!GM.clientId) { alert('Save the Client ID first.'); return; } await gmConnect(); body.querySelector('#gsM').textContent = '✔ Connected'; gmPoll(true); } catch (e) { body.querySelector('#gsM').textContent = 'Failed: ' + e.message; } };
+}
+
+/* ===== Official signatures (build CA) ===== */
+var SIG = { loaded: false, on: true, notices: false, items: {}, stamp: '' };
+var SIG_ROLES = [['chair', 'Chairperson', 'Joshua Ouma Ouko'], ['sec', 'Secretary', 'Dancan Onyango Omedo'], ['tre', 'Treasurer', 'Meresia Anyango Oyungo']];
+async function sigLoad() { try { const m = await getCollectionEntriesWithId('tablebanking', 'ekfs_meta'), g = m.find(x => x.__id === 'signatures'); if (g) { SIG.on = g.on !== false; SIG.notices = !!g.notices; SIG.items = { chair: g.chair, sec: g.sec, tre: g.tre }; SIG.stamp = (g.stamp && g.stamp.img) || ''; } } catch (e) {} SIG.loaded = true; }
+function sigStampHtml() {
+  if (!SIG.stamp) return '';
+  const d = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi' }).replace(/\./g, '').toUpperCase();
+  return '<div style="text-align:center;margin-top:8px;page-break-inside:avoid"><div style="position:relative;display:inline-block;width:130px;height:130px"><img src="' + SIG.stamp + '" style="width:130px;height:130px;display:block"><div style="position:absolute;left:0;right:0;top:49.4%;transform:translateY(-50%) scaleX(.62);text-align:center;font:400 17px Arial,Helvetica,sans-serif;color:#e53935;letter-spacing:1px;white-space:nowrap">' + escHtml(d) + '</div></div></div>';
+}
+function sigApply(title, html) {
+  try {
+    if (!SIG.on || !SIG.loaded) return html;
+    const have = SIG_ROLES.filter(r => SIG.items[r[0]] && SIG.items[r[0]].img), stampH = sigStampHtml(); if (!have.length && !stampH) return html;
+    if (/card|login|credential|recovery code|attendance|registration form|application|qr|password/i.test(title)) return html;
+    if (!SIG.notices && /notice|demand|recovery/i.test(title)) return html;
+    if (/class="sig"/.test(html)) {
+      const doc = new DOMParser().parseFromString('<body>' + html + '</body>', 'text/html'); let hit = 0;
+      doc.querySelectorAll('.sig > div').forEach(d => { const t = d.textContent.trim().toLowerCase(), k = t.startsWith('chairperson') ? 'chair' : t.startsWith('secretary') ? 'sec' : t.startsWith('treasurer') ? 'tre' : ''; if (k && SIG.items[k] && SIG.items[k].img) { d.style.position = 'relative'; const i = doc.createElement('img'); i.src = SIG.items[k].img; i.style.cssText = 'position:absolute;left:6px;bottom:100%;height:46px;max-width:140px;margin-bottom:-4px'; d.insertBefore(i, d.firstChild); hit++; } });
+      if (hit) return doc.body.innerHTML + stampH;
+    }
+    return html + (have.length ? '<div class="sig" style="page-break-inside:avoid;margin-top:60px">' : '<div style="display:none">') + have.map(r => '<div style="position:relative"><img src="' + SIG.items[r[0]].img + '" style="position:absolute;left:6px;bottom:100%;height:46px;max-width:140px;margin-bottom:-4px">' + r[1] + '<br><span style="font-size:11px;color:#444">' + escHtml(SIG.items[r[0]].name || r[2]) + '</span></div>').join('') + '</div>' + stampH;
+  } catch (e) { return html; }
+}
+function sigProcess(file, maxW, kind) {
+  return new Promise((res, rej) => { const fr = new FileReader(); fr.onerror = () => rej(new Error('Could not read the image')); fr.onload = () => { const im = new Image(); im.onerror = () => rej(new Error('That file is not an image')); im.onload = () => {
+    const sc = Math.min(1, maxW / im.width), w = Math.round(im.width * sc), h = Math.round(im.height * sc), c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.drawImage(im, 0, 0, w, h);
+    const d = x.getImageData(0, 0, w, h), p = d.data; for (let i = 0; i < p.length; i += 4) { const mn = Math.min(p[i], p[i + 1], p[i + 2]); if (kind === 'stamp' && p[i] > 150 && p[i + 1] < 140 && p[i + 2] < 140) { p[i + 3] = 0; continue; } p[i + 3] = Math.min(p[i + 3], Math.max(0, Math.min(255, (255 - mn) * 1.8))); } x.putImageData(d, 0, 0);
+    // trim empty margins
+    let x0 = w, y0 = h, x1 = 0, y1 = 0; for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (p[(yy * w + xx) * 4 + 3] > 40) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy; }
+    if (x1 <= x0 || y1 <= y0) return rej(new Error('No ink found in the image'));
+    const o = document.createElement('canvas'); o.width = x1 - x0 + 1; o.height = y1 - y0 + 1; o.getContext('2d').putImageData(d, -x0, -y0, x0, y0, o.width, o.height); res(o.toDataURL('image/png')); }; im.src = fr.result; }; fr.readAsDataURL(file); });
+}
+async function sgOpen() {
+  if (otRole() !== 'admin') { alert('Only the Admin can change signatures.'); return; }
+  await sigLoad();
+  const ov = otModal('✍ Signatures & stamp', '<p style="font-size:12px;color:#555;margin:6px 0">Signatures and the stamp are kept in the private database (not in the public website file). They are added automatically above the Chairperson, Secretary and Treasurer lines on statements, receipts and reports, with the stamp dated the day it is printed. They are NOT added to ID cards, login sheets, the registration form, loan applications, or (by default) recovery notices.</p><div id="sgList"></div><label style="font-size:13px;display:block;margin-top:8px"><input type="checkbox" id="sgOn"> Apply signatures to printed documents</label><label style="font-size:13px;display:block"><input type="checkbox" id="sgNo"> Also sign recovery / demand notices</label><div style="margin-top:8px"><button class="btn-primary" id="sgSave">Save</button> <span id="sgM" style="font-size:12px"></span></div>');
+  const draft = JSON.parse(JSON.stringify(SIG.items || {})); ov.querySelector('#sgOn').checked = SIG.on; ov.querySelector('#sgNo').checked = SIG.notices;
+  const draw = () => { ov.querySelector('#sgList').innerHTML = SIG_ROLES.map(r => { const it = draft[r[0]] || {}; return '<div style="border:1px solid #cfd8dc;border-radius:10px;padding:8px;margin:6px 0"><b style="font-size:13px">' + r[1] + '</b><br><input data-k="' + r[0] + '" class="sgName" value="' + escHtml(it.name || r[2]) + '" style="width:100%;box-sizing:border-box;margin:4px 0"><div style="background:#fff;border:1px dashed #aaa;min-height:60px;text-align:center;padding:4px">' + (it.img ? '<img src="' + it.img + '" style="max-height:70px;max-width:100%">' : '<span style="color:#999;font-size:12px">No signature yet</span>') + '</div><input type="file" accept="image/*" class="sgFile" data-k="' + r[0] + '" style="margin-top:4px;font-size:12px"> ' + (it.img ? '<button class="btn-danger btn-small sgDel" data-k="' + r[0] + '">Remove</button>' : '') + '</div>'; }).join('') + (() => { const it = draft.stamp || {}; return '<div style="border:1px solid #cfd8dc;border-radius:10px;padding:8px;margin:6px 0"><b style="font-size:13px">Official stamp</b><div style="font-size:11.5px;color:#555">Upload the round stamp. The date in it is removed; each printout gets that day’s date automatically.</div><div style="background:#fff;border:1px dashed #aaa;min-height:60px;text-align:center;padding:4px">' + (it.img ? '<img src="' + it.img + '" style="max-height:110px;max-width:100%">' : '<span style="color:#999;font-size:12px">No stamp yet</span>') + '</div><input type="file" accept="image/*" class="sgFile" data-k="stamp" style="margin-top:4px;font-size:12px"> ' + (it.img ? '<button class="btn-danger btn-small sgDel" data-k="stamp">Remove</button>' : '') + '</div>'; })();
+    ov.querySelectorAll('.sgName').forEach(i => i.oninput = () => { draft[i.dataset.k] = Object.assign({}, draft[i.dataset.k], { name: i.value }); });
+    ov.querySelectorAll('.sgDel').forEach(b => b.onclick = () => { draft[b.dataset.k] = Object.assign({}, draft[b.dataset.k], { img: '' }); draw(); });
+    ov.querySelectorAll('.sgFile').forEach(f => f.onchange = async () => { if (!f.files[0]) return; try { const img = await sigProcess(f.files[0], f.dataset.k === 'stamp' ? 420 : 360, f.dataset.k === 'stamp' ? 'stamp' : ''); draft[f.dataset.k] = Object.assign({}, draft[f.dataset.k], { img }); draw(); } catch (e) { alert(e.message); } }); };
+  draw();
+  ov.querySelector('#sgSave').onclick = async () => { const rec = { on: ov.querySelector('#sgOn').checked, notices: ov.querySelector('#sgNo').checked, by: getSession().username, at: new Date().toISOString() }; SIG_ROLES.forEach(r => { rec[r[0]] = { name: (draft[r[0]] || {}).name || r[2], img: (draft[r[0]] || {}).img || '' }; }); rec.stamp = { img: (draft.stamp || {}).img || '' };
+    if (JSON.stringify(rec).length > 900000) { alert('Signature images are too large. Use smaller images.'); return; }
+    await otCol('ekfs_meta').doc('signatures').set(rec); try { auditLog('signatures updated', 'ekfs_meta', 'signatures', SIG_ROLES.map(r => r[1] + (rec[r[0]].img ? '✔' : '–')).join(' ') + ' stamp' + (rec.stamp.img ? '✔' : '–')); } catch (e) {} await sigLoad(); ov.querySelector('#sgM').textContent = '✔ Saved'; };
 }
 
 function setupPrintButtons() {
@@ -7780,7 +7829,7 @@ function openPrintWindow(title, bodyHtml) {
     '.db-h{font-size:13px;text-transform:uppercase;color:#1b5e20;margin:16px 0 6px;border-bottom:2px solid #1b5e20}.db-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.db-c{border:1px solid #999;border-radius:6px;padding:6px;page-break-inside:avoid}.db-c small{display:block;font-size:10px;text-transform:uppercase;color:#444}.db-c b{display:block;font-size:16px;margin:3px 0}.db-c span{font-size:10px;color:#444}.db-c i{display:none}.db-c.bad b,.db-c.bad small{color:#c62828}.db-c.good b,.db-c.good small{color:#1e8a4a}.db-chart{border:1px solid #999;border-radius:6px;padding:8px;margin-top:8px;page-break-inside:avoid}.db-chart h3{margin:0;font-size:13px}.db-chart p{margin:2px 0 6px;font-size:11px;color:#444}.db-bars{display:flex;align-items:flex-end;gap:4px;height:110px;border-bottom:1px solid #666}.db-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%}.db-v{font-size:9px}.db-pair{display:flex;gap:2px;align-items:flex-end;width:100%}.db-bar{width:100%;min-height:2px;border-radius:3px 3px 0 0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.db-lbl{display:flex;gap:4px;font-size:9px}.db-lbl span{flex:1;text-align:center}.db-leg{font-size:10px}.db-leg b{display:inline-block;width:9px;height:9px;margin:0 3px 0 8px}.db-badge{float:right;font-size:11px}.db-note{font-size:11px;color:#6a5200}@media print{.noprint{display:none}}</style></head><body>' +
     '<div class="noprint" style="margin-bottom:10px"><button onclick="window.print()" style="padding:8px 16px">Print / Save as PDF</button></div>' +
     '<div class="hd">' + (logo ? '<img src="' + logo + '">' : '') + '<div><h1>EAST KAMAGAK FARMERS SACCO</h1><div>' + escHtml(title) + '</div></div></div>' +
-    bodyHtml + '</body></html>');
+    sigApply(title, bodyHtml) + '</body></html>');
   w.document.close();
 }
 
