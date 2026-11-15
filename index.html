@@ -86,7 +86,10 @@
   header.topbar .titles p {
     margin: 2px 0 0;
     font-size: 11px;
-    color: var(--gold-light);
+    color: #ffe9a8 !important;
+    font-size: 13px;
+    font-weight: 600;
+    text-shadow: 0 1px 2px rgba(0,0,0,.45);
     font-style: italic;
     white-space: nowrap;
     overflow: hidden;
@@ -106,7 +109,7 @@
       font-size: 14px;
       white-space: normal;
     }
-    header.topbar .titles p { white-space: normal; }
+    header.topbar .titles p { white-space: normal; font-size: 13px; }
     .header-actions {
       flex: 1 1 100%;
       margin-left: 0;
@@ -901,6 +904,14 @@
   #appShell .layout .panel, #appShell #memberViewContainer .panel{background:#f3f7f4;border:none;border-radius:16px;box-shadow:none;}
   #appShell footer.appfoot{color:#a9c4b2;}
   #appShell footer.appfoot b{color:#5fd08f;}
+  /* ---------- Member portal: Home stays green, other tabs blue (build CF) ---------- */
+  body.mh-blue #appShell{background:linear-gradient(#0a1f44,#0d2a5c);}
+  body.mh-blue header.topbar{background:linear-gradient(135deg,#0a1f44,#1565c0);}
+  body.mh-blue .sync-badge.online{background:#1565c0;}
+  body.mh-blue #appShell footer.appfoot{color:#bcd3f2;}
+  body.mh-blue #appShell footer.appfoot b{color:#90caf9;}
+  body.mh-blue #appShell #memberViewContainer .panel{background:#eef4fb;}
+  body.mh-blue #mhTabBar{border-top:3px solid #1565c0;}
   /* ---------- Dashboard (officials only) ---------- */
   .rt-off{display:none!important;}
   #recTabs{display:none;position:sticky;top:0;z-index:30;gap:6px;overflow-x:auto;padding:8px 2px 10px;margin:0 0 10px;background:var(--cream);}
@@ -1052,7 +1063,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CD</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CF</span></p>
   </div>
 </div>
 
@@ -1633,7 +1644,7 @@ setupForm.addEventListener('submit', async (e) => {
   }
 });
 
-function applyRoleUI(role) {
+function applyRoleUI(role) { try { document.body.classList.remove("mh-blue"); } catch (e) {}
   manageAccessBtn.style.display = (role === 'admin') ? 'inline-block' : 'none';
   try { setTimeout(msgInit, 300); } catch (e) {}
   try { setTimeout(sigLoad, 600); } catch (e) {}
@@ -8279,15 +8290,19 @@ function mhStreak(contribs) {
   return n;
 }
 Object.assign(PORTAL_SW, { 'Home': 'Nyumbani', 'Pay': 'Lipa', 'Me': 'Mimi', 'Loan': 'Mkopo', 'LAST MEETING': 'MKUTANO WA MWISHO', 'Figures as of': 'Takwimu za', 'Online': 'Mtandaoni', 'Offline': 'Nje ya mtandao', 'MY LOAN REQUEST': 'OMBI LANGU LA MKOPO', 'Request a loan': 'Omba mkopo', 'Send request': 'Tuma ombi', 'Cancel request': 'Futa ombi', 'Request sent': 'Ombi limetumwa', 'Being appraised': 'Linakaguliwa', 'Approved': 'Limeidhinishwa', 'Money paid out': 'Pesa zimetolewa', 'Declined — please see an official': 'Limekataliwa — tafadhali onana na afisa', 'PAYMENTS I MADE': 'MALIPO NILIYOFANYA', 'Purpose of the loan': 'Kusudi la mkopo', 'Settings': 'Mipangilio' });
+const MH_BLUE_MAP = [[/#e65100|#ef6c00|#bf360c|#7b1fa2|#6a1b9a|#8e24aa|#00897b|#00695c|#1b5e20|#0d47a1/gi, '#1565c0'], [/#ffa726|#fb8c00|#f57c00|#26a69a|#4db6ac|#43a047|#2e7d32|#3d9be9/gi, '#42a5f5'], [/#ffcc80/gi, '#90caf9'], [/#e8f5e9|#eaf6ec|#e3f3e4|#d9f1ee|#f0e1f5|#fdebd8/gi, '#e3f2fd']];
+function mhBlueEl(e) { const a = e.getAttribute && e.getAttribute('style'); if (!a || !/#/.test(a)) return; let n = a; MH_BLUE_MAP.forEach(m => { n = n.replace(m[0], m[1]); }); if (n !== a) e.setAttribute('style', n); }
+function mhBluePane(pane) { if (!pane) return; try { mhBlueEl(pane); pane.querySelectorAll('[style]').forEach(mhBlueEl); if (!pane.__mhObs && window.MutationObserver) { pane.__mhObs = new MutationObserver(ms => { ms.forEach(m => { m.addedNodes.forEach(n => { if (n.nodeType === 1) { mhBlueEl(n); n.querySelectorAll && n.querySelectorAll('[style]').forEach(mhBlueEl); } }); }); }); pane.__mhObs.observe(pane, { childList: true, subtree: true }); } } catch (e) {} }
 var mhTab = 'home';
 const MH_TABS = [['home', '🏠', 'Home'], ['savings', '💰', 'Savings'], ['loan', '💳', 'Loan'], ['pay', '📲', 'Pay'], ['me', '👤', 'Me']];
 const MH_COL = { home: ['#2e7d32', '#e3f3e4'], savings: ['#ef6c00', '#fdebd8'], loan: ['#1565c0', '#e1ecf9'], pay: ['#00897b', '#d9f1ee'], me: ['#7b1fa2', '#f0e1f5'] };
 function mhShowTab(tab) {
-  mhTab = tab;
+  mhTab = tab; try { document.body.classList.toggle('mh-blue', tab !== 'home'); } catch (e) {}
   MH_TABS.forEach(x => { const p = document.getElementById('mhPane-' + x[0]); if (p) p.style.display = x[0] === tab ? 'block' : 'none'; });
   document.querySelectorAll('#mhTabBar button').forEach(b => { const on = b.dataset.tab === tab;
-    if (b.dataset.tab === 'pay') { b.style.background = on ? '#bf360c' : '#e65100'; b.style.boxShadow = on ? '0 0 0 4px #ffcc80,0 4px 10px rgba(0,0,0,.35)' : '0 4px 10px rgba(0,0,0,.35)'; return; }
-    b.style.background = on ? '#1b5e20' : 'transparent'; b.style.color = on ? '#fff' : '#37474f'; b.style.fontWeight = on ? '800' : '700'; });
+    const bl = tab !== 'home';
+    if (b.dataset.tab === 'pay') { b.style.background = bl ? (on ? '#0d47a1' : '#1565c0') : (on ? '#bf360c' : '#e65100'); b.style.boxShadow = on ? '0 0 0 4px ' + (bl ? '#90caf9' : '#ffcc80') + ',0 4px 10px rgba(0,0,0,.35)' : '0 4px 10px rgba(0,0,0,.35)'; return; }
+    b.style.background = on ? (bl ? '#1565c0' : '#1b5e20') : 'transparent'; b.style.color = on ? '#fff' : '#37474f'; b.style.fontWeight = on ? '800' : '700'; });
   try { const c = document.getElementById('memberViewContainer'); window.scrollTo({ top: Math.max(0, c.getBoundingClientRect().top + window.pageYOffset - 70), behavior: 'auto' }); } catch (e) {}
 }
 function mhTitleRow(icon, label) { return '<div style="font-size:20px;font-weight:800;color:#1b5e20;margin:6px 2px 4px;">' + icon + ' ' + label + '</div>'; }
@@ -8446,6 +8461,7 @@ async function memberHomeRender(memberName) {
     '<button type="button" id="mhPw" style="margin-top:10px;width:100%;padding:12px;border-radius:12px;border:none;background:#37474f;color:#fff;font-weight:800;font-size:14px;">🔑 ' + (mhLang === 'sw' ? 'Badilisha nenosiri langu' : 'Change my password') + '</button>' + '<div style="font-size:11.5px;color:#777;margin:6px 4px;">' + (mhLang === 'sw' ? 'Unaona rekodi zako tu. Ukiona kosa, wasiliana na afisa.' : 'You are viewing your own records only. If any figure looks wrong, contact an official.') + '</div>';
   // ================= MOUNT =================
   root.innerHTML = MH_TABS.map(x => '<div id="mhPane-' + x[0] + '" style="display:none;min-height:72vh;">' + ({ home, savings: sv, loan: ln, pay, me })[x[0]] + '</div>').join('');
+  ['savings', 'loan', 'pay', 'me'].forEach(k => mhBluePane(root.querySelector('#mhPane-' + k)));
   const slot = (name, node) => { const s2 = root.querySelector('[data-slot="' + name + '"]'); if (s2 && node) s2.appendChild(node); };
   slot('summary', summary); slot('elig', eb); slot('contrib', contribPanel); slot('loans', loansPanel); slot('print', pbtn);
   [contribPanel, loansPanel].forEach(pn => { if (pn) pn.style.display = 'none'; }); if (summary) summary.style.display = '';
