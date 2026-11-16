@@ -904,7 +904,7 @@
   #appShell .layout .panel, #appShell #memberViewContainer .panel{background:#f3f7f4;border:none;border-radius:16px;box-shadow:none;}
   #appShell footer.appfoot{color:#a9c4b2;}
   #appShell footer.appfoot b{color:#5fd08f;}
-  /* ---------- Classy member portal (build CK) ---------- */
+  /* ---------- Classy member portal (build CL) ---------- */
   body.mh-member header.topbar{background:linear-gradient(135deg,#050f09,#0f3d27) !important;}
   body.mh-member #appShell{background:linear-gradient(#050f09,#0a2a1a);}
   body.mh-member #memberViewContainer .btn-primary{background:#0f3d27;}
@@ -1076,7 +1076,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CK</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CL</span></p>
   </div>
 </div>
 
@@ -4361,6 +4361,16 @@ async function msgTap(kind) {
   const sel = msgPickWire(body, members, 'wt', hasP);
   body.querySelector('#wtT').onchange = e => { body.querySelector('#wtB').value = MSG_TPL[e.target.value][1]; upd(); };
   const upd = () => { const l = body.querySelector('#wtLen'); if (l) { const n = body.querySelector('#wtB').value.length; l.textContent = n + ' characters (' + Math.max(1, Math.ceil(n / 160)) + ' SMS per member)'; } }; body.querySelector('#wtB').oninput = upd;
+  if (!isWa) { const go = body.querySelector('#wtGo'), bb = document.createElement('div'); bb.style.cssText = 'margin:8px 0;padding:10px;border:2px solid #1b5e20;border-radius:12px;background:#f1f8e9';
+    bb.innerHTML = '<button type="button" id="wtAll" class="btn-primary" style="width:100%;padding:13px;font-size:15px;font-weight:800">📨 Send to ALL selected in one tap</button><div style="font-size:12px;color:#444;margin-top:6px">Opens your Messages app with <b>all selected numbers</b> and your message ready — just tap Send once. Batch size: <select id="wtBS"><option value="15">15</option><option value="25" selected>25</option><option value="40">40</option></select> members per batch. The same text goes to everyone, so {name} is replaced by “Member” here. Use the list below if you want each name.</div><div id="wtAllOut" style="margin-top:6px"></div>';
+    go.parentNode.insertBefore(bb, go);
+    bb.querySelector('#wtAll').onclick = () => { const list = sel().filter(hasP), txt = body.querySelector('#wtB').value.trim(); if (!list.length) { alert('Select at least one member with a phone number.'); return; } if (!txt) { alert('Write a message.'); return; }
+      if (/\[(DATE|TIME|PLACE)\]/.test(txt) && !confirm('The message still contains [DATE], [TIME] or [PLACE]. Continue?')) return;
+      const plain = txt.replace(/\{(name|first)\}/g, 'Member').replace(/\{no\}/g, ''), bs = parseInt(bb.querySelector('#wtBS').value, 10) || 25, nums = [...new Set(list.map(m => arPhone(m.contact)))].filter(Boolean), batches = []; for (let i = 0; i < nums.length; i += bs) batches.push(nums.slice(i, i + bs));
+      const out = bb.querySelector('#wtAllOut'); let done = 0;
+      out.innerHTML = '<div id="wtAP" style="font-size:13px;font-weight:700;margin-bottom:4px"></div>' + batches.map((b, i) => '<a class="btn-primary wtBatch" data-i="' + i + '" href="sms:' + b.map(n => '+' + n).join(',') + '?body=' + encodeURIComponent(plain) + '" style="display:block;text-align:center;padding:11px;border-radius:10px;text-decoration:none;margin-bottom:6px">' + (batches.length > 1 ? 'Open batch ' + (i + 1) + ' of ' + batches.length + ' (' + b.length + ' members)' : 'Open Messages — ' + b.length + ' members') + '</a>').join('') + '<div style="font-size:11.5px;color:#666">If your phone sends it as a group chat, turn on “Send as individual messages” in the Messages app settings so members do not see each other.</div>';
+      const upd = () => { out.querySelector('#wtAP').textContent = done + ' of ' + batches.length + ' batch(es) opened'; if (done === batches.length) msgLog('sms', body.querySelector('#wtF').value, nums.length, 'bulk'); };
+      out.querySelectorAll('.wtBatch').forEach(a => a.addEventListener('click', () => { if (!a.dataset.d) { a.dataset.d = '1'; a.style.opacity = '.55'; a.textContent = '✔ ' + a.textContent; done++; setTimeout(upd, 300); } })); upd(); try { out.querySelector('.wtBatch').click(); } catch (e) {} }; }
   body.querySelector('#wtGo').onclick = () => {
     const list = sel(), txt = body.querySelector('#wtB').value.trim(); if (!list.length) { alert('Select at least one member.'); return; } if (!txt) { alert('Write a message.'); return; }
     if (/\[(DATE|TIME|PLACE)\]/.test(txt) && !confirm('The message still contains [DATE], [TIME] or [PLACE]. Continue?')) return;
