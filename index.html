@@ -904,14 +904,27 @@
   #appShell .layout .panel, #appShell #memberViewContainer .panel{background:#f3f7f4;border:none;border-radius:16px;box-shadow:none;}
   #appShell footer.appfoot{color:#a9c4b2;}
   #appShell footer.appfoot b{color:#5fd08f;}
-  /* ---------- Member portal: Home stays green, other tabs blue (build CG) ---------- */
+  /* ---------- Classy member portal (build CJ) ---------- */
+  body.mh-member header.topbar{background:linear-gradient(135deg,#050f09,#0f3d27) !important;}
+  body.mh-member #appShell{background:linear-gradient(#050f09,#0a2a1a);}
+  body.mh-member #memberViewContainer .btn-primary{background:#0f3d27;}
+  body.mh-member #memberViewContainer .btn-primary:hover{background:#14502f;}
+
+  body.mh-member header.topbar{border-bottom:2px solid #c9a227;}
+  body.mh-member header.topbar .titles h1{font-family:Georgia,'Times New Roman',serif;font-weight:600;letter-spacing:1.4px;}
+  body.mh-member .sync-badge.online, body.mh-member.mh-blue .sync-badge.online{background:transparent;border:1px solid #c9a227;color:#ffe9a8;}
+  body.mh-member #appShell #memberViewContainer .panel{background:#faf6e9;}
+  body.mh-member.mh-blue #appShell #memberViewContainer .panel{background:#f3f5fa;}
+  #mhTabBar{border-top:2px solid #c9a227 !important;}
+  body.mh-member.mh-blue #memberViewContainer .btn-primary{background:#1565c0;}
+  #memberViewContainer svg.mhi{display:inline-block;}
+  /* ---------- Member portal: Home stays green, other tabs blue (build CF) ---------- */
   body.mh-blue #appShell{background:linear-gradient(#0a1f44,#0d2a5c);}
   body.mh-blue header.topbar{background:linear-gradient(135deg,#0a1f44,#1565c0);}
   body.mh-blue .sync-badge.online{background:#1565c0;}
   body.mh-blue #appShell footer.appfoot{color:#bcd3f2;}
   body.mh-blue #appShell footer.appfoot b{color:#90caf9;}
   body.mh-blue #appShell #memberViewContainer .panel{background:#eef4fb;}
-  #mhTabBar{border-top:3px solid #f2b705 !important;}
   /* ---------- Dashboard (officials only) ---------- */
   .rt-off{display:none!important;}
   #recTabs{display:none;position:sticky;top:0;z-index:30;gap:6px;overflow-x:auto;padding:8px 2px 10px;margin:0 0 10px;background:var(--cream);}
@@ -1063,7 +1076,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CG</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CJ</span></p>
   </div>
 </div>
 
@@ -1644,7 +1657,7 @@ setupForm.addEventListener('submit', async (e) => {
   }
 });
 
-function applyRoleUI(role) { try { document.body.classList.remove("mh-blue"); } catch (e) {}
+function applyRoleUI(role) { try { document.body.classList.remove("mh-blue", "mh-member"); } catch (e) {}
   manageAccessBtn.style.display = (role === 'admin') ? 'inline-block' : 'none';
   try { setTimeout(msgInit, 300); } catch (e) {}
   try { setTimeout(sigLoad, 600); } catch (e) {}
@@ -4381,12 +4394,13 @@ function sigApply(title, html) {
     const have = SIG_ROLES.filter(r => SIG.items[r[0]] && SIG.items[r[0]].img), stampH = sigStampHtml(); if (!have.length && !stampH) return html;
     if (/card|login|credential|recovery code|attendance|registration form|application|qr|password/i.test(title)) return html;
     if (!SIG.notices && /notice|demand|recovery/i.test(title)) return html;
+    let secLabel = 'Secretary'; try { const ss = getSession(); if (ss && ss.role === 'creditcommittee') secLabel = 'Credit Committee Secretary'; } catch (e) {}
     if (/class="sig"/.test(html)) {
       const doc = new DOMParser().parseFromString('<body>' + html + '</body>', 'text/html'); let hit = 0;
-      doc.querySelectorAll('.sig > div').forEach(d => { const t = d.textContent.trim().toLowerCase(), k = t.startsWith('chairperson') ? 'chair' : t.startsWith('secretary') ? 'sec' : t.startsWith('treasurer') ? 'tre' : ''; if (k && SIG.items[k] && SIG.items[k].img) { d.style.position = 'relative'; const i = doc.createElement('img'); i.src = SIG.items[k].img; i.style.cssText = 'position:absolute;left:6px;bottom:100%;height:46px;max-width:140px;margin-bottom:-4px'; d.insertBefore(i, d.firstChild); hit++; } });
+      doc.querySelectorAll('.sig > div').forEach(d => { let t = d.textContent.trim().toLowerCase(); if (t.startsWith('prepared by')) { d.textContent = 'Prepared by: ' + secLabel; t = 'secretary'; } const k = t.startsWith('chairperson') ? 'chair' : t.startsWith('secretary') ? 'sec' : t.startsWith('treasurer') ? 'tre' : ''; if (k && SIG.items[k] && SIG.items[k].img) { d.style.position = 'relative'; const i = doc.createElement('img'); i.src = SIG.items[k].img; i.style.cssText = 'position:absolute;left:6px;bottom:100%;height:46px;max-width:140px;margin-bottom:-4px'; d.insertBefore(i, d.firstChild); hit++; } });
       if (hit) return doc.body.innerHTML + stampH;
     }
-    return html + (have.length ? '<div class="sig" style="page-break-inside:avoid;margin-top:60px">' : '<div style="display:none">') + have.map(r => '<div style="position:relative"><img src="' + SIG.items[r[0]].img + '" style="position:absolute;left:6px;bottom:100%;height:46px;max-width:140px;margin-bottom:-4px">' + r[1] + '<br><span style="font-size:11px;color:#444">' + escHtml(SIG.items[r[0]].name || r[2]) + '</span></div>').join('') + '</div>' + stampH;
+    return html + (have.length ? '<div class="sig" style="page-break-inside:avoid;margin-top:60px">' : '<div style="display:none">') + have.map(r => '<div style="position:relative"><img src="' + SIG.items[r[0]].img + '" style="position:absolute;left:6px;bottom:100%;height:46px;max-width:140px;margin-bottom:-4px">' + (r[0] === 'sec' ? secLabel : r[1]) + '<br><span style="font-size:11px;color:#444">' + escHtml(r[0] === 'sec' && secLabel !== 'Secretary' ? '' : (SIG.items[r[0]].name || r[2])) + '</span></div>').join('') + '</div>' + stampH;
   } catch (e) { return html; }
 }
 function sigProcess(file, maxW, kind) {
@@ -6646,7 +6660,7 @@ async function cardReqPortal(root, member, memberName) {
   let all = []; try { all = await getCollectionEntriesWithId('tablebanking', 'card-request'); } catch (e) { slot.innerHTML = ''; return; }
   const mine = all.filter(r => r.memberName === memberName).sort((a, b) => String(b.createdAt || b.date || '').localeCompare(String(a.createdAt || a.date || '')));
   const cur = mine[0], P = PORTAL_PAY;
-  const box = (inner) => '<div style="background:#fff;border-radius:16px;box-shadow:0 2px 8px rgba(0,0,0,.12);padding:14px;margin:10px 0;"><div style="font-weight:800;color:#1b5e20;font-size:13px;letter-spacing:.4px;margin-bottom:8px;">🪪 ' + t('MY MEMBERSHIP CARD', 'KADI YANGU YA UANACHAMA') + '</div>' + inner + '</div>';
+  const box = (inner) => '<div style="background:#fff;border-radius:14px;border:1px solid #eadfb8;box-shadow:0 1px 2px rgba(60,45,0,.06),0 8px 20px rgba(60,45,0,.06);padding:16px 15px;margin:12px 0;"><div style="display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:1.5px;color:#8a6a12;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid #f0e7c6;">🪪 <span>' + t('MY MEMBERSHIP CARD', 'KADI YANGU YA UANACHAMA') + '</span></div>' + inner + '</div>';
   const form = () => '<div style="font-size:13.5px;color:#333;">' + t('Apply for your SACCO membership card. Pay <b>KES ' + CRQ_FEE + '</b> by M-Pesa, then type the M-Pesa code below.', 'Omba kadi yako ya uanachama. Lipa <b>KES ' + CRQ_FEE + '</b> kwa M-Pesa, kisha andika msimbo wa M-Pesa hapa chini.') + '</div>' +
     '<div style="background:#f1f8e9;border-radius:10px;padding:9px;margin:8px 0;font-size:13.5px;">M-Pesa → Lipa na M-Pesa → <b>Pay Bill</b><br>' + t('Business number', 'Namba ya biashara') + ': <b>' + escHtml(P.paybill) + '</b><br>' + t('Account number', 'Namba ya akaunti') + ': <b>' + escHtml(P.account) + '</b><br>' + t('Amount', 'Kiasi') + ': <b>KES ' + CRQ_FEE + '</b></div>' +
     '<input id="crqCode" maxlength="12" autocapitalize="characters" placeholder="' + t('M-Pesa code e.g. SLK4X7Y2AB', 'Msimbo wa M-Pesa mfano SLK4X7Y2AB') + '" style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #bbb;border-radius:10px;font-size:16px;text-transform:uppercase;letter-spacing:1px;">' +
@@ -8269,8 +8283,8 @@ function mhCopy(txt, btn) {
   mhCopyOld(txt, done);
 }
 function mhCopyOld(txt, done) { try { const x = document.createElement('textarea'); x.value = txt; x.style.position = 'fixed'; x.style.opacity = '0'; document.body.appendChild(x); x.select(); document.execCommand('copy'); x.remove(); done(); } catch (e) { alert('Copy this: ' + txt); } }
-function mhCard(inner, extra) { return '<div class="mh-card" style="background:#fff;border-radius:16px;padding:14px;margin:12px 0;box-shadow:0 1px 4px rgba(0,0,0,.08);color:#111;' + (extra || '') + '">' + inner + '</div>'; }
-function mhTitle(icon, tt) { return '<div style="font-size:12px;font-weight:800;letter-spacing:.6px;color:#1b5e20;margin-bottom:8px;">' + icon + ' ' + tt + '</div>'; }
+function mhCard(inner, extra) { return '<div class="mh-card" style="background:#fff;border-radius:14px;padding:16px 15px;margin:12px 0;border:1px solid #eadfb8;box-shadow:0 1px 2px rgba(60,45,0,.06),0 8px 20px rgba(60,45,0,.06);color:#111;' + (extra || '') + '">' + inner + '</div>'; }
+function mhTitle(icon, tt) { return '<div style="display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:1.5px;color:#8a6a12;margin-bottom:10px;padding-bottom:7px;border-bottom:1px solid #f0e7c6;">' + icon + '<span>' + tt + '</span></div>'; }
 function mhBar(pct, color) { pct = Math.max(0, Math.min(100, pct)); return '<div style="height:12px;background:#e3ebe5;border-radius:8px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:' + color + ';border-radius:8px;"></div></div>'; }
 function mhMonthKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
 function mhMonths(contribs) {
@@ -8290,22 +8304,40 @@ function mhStreak(contribs) {
   return n;
 }
 Object.assign(PORTAL_SW, { 'Home': 'Nyumbani', 'Pay': 'Lipa', 'Me': 'Mimi', 'Loan': 'Mkopo', 'LAST MEETING': 'MKUTANO WA MWISHO', 'Figures as of': 'Takwimu za', 'Online': 'Mtandaoni', 'Offline': 'Nje ya mtandao', 'MY LOAN REQUEST': 'OMBI LANGU LA MKOPO', 'Request a loan': 'Omba mkopo', 'Send request': 'Tuma ombi', 'Cancel request': 'Futa ombi', 'Request sent': 'Ombi limetumwa', 'Being appraised': 'Linakaguliwa', 'Approved': 'Limeidhinishwa', 'Money paid out': 'Pesa zimetolewa', 'Declined — please see an official': 'Limekataliwa — tafadhali onana na afisa', 'PAYMENTS I MADE': 'MALIPO NILIYOFANYA', 'Purpose of the loan': 'Kusudi la mkopo', 'Settings': 'Mipangilio' });
-const MH_BLUE_MAP = [[/#e65100|#ef6c00|#bf360c|#7b1fa2|#6a1b9a|#8e24aa|#00897b|#00695c|#1b5e20|#0d47a1/gi, '#1565c0'], [/#ffa726|#fb8c00|#f57c00|#26a69a|#4db6ac|#43a047|#2e7d32|#3d9be9/gi, '#42a5f5'], [/#ffcc80/gi, '#90caf9'], [/#e8f5e9|#eaf6ec|#e3f3e4|#d9f1ee|#f0e1f5|#fdebd8/gi, '#e3f2fd']];
-function mhBlueEl(e) { const a = e.getAttribute && e.getAttribute('style'); if (!a || !/#/.test(a)) return; let n = a; MH_BLUE_MAP.forEach(m => { n = n.replace(m[0], m[1]); }); if (n !== a) e.setAttribute('style', n); }
+const MH_BLUE_MAP = [[/#e65100|#ef6c00|#bf360c|#7b1fa2|#6a1b9a|#8e24aa|#00897b|#00695c|#1b5e20|#0d47a1|#1565c0|#0d2418/gi, '#0f3d27'], [/#ffa726|#fb8c00|#f57c00|#26a69a|#4db6ac|#43a047|#2e7d32|#3d9be9|#42a5f5/gi, '#1f6b45'], [/#ffcc80|#90caf9/gi, '#9fc9b0'], [/#e8f5e9|#eaf6ec|#e3f3e4|#d9f1ee|#f0e1f5|#fdebd8|#e3f2fd|#eef4fb|#e1ecf9/gi, '#e6efe9']];
+function mhBlueEl(e) { const a = e.getAttribute && e.getAttribute('style'); if (!a || !/#/.test(a)) return; if (e.hasAttribute('data-keep') || (e.closest && e.closest('[data-keep]'))) return; let n = a; MH_BLUE_MAP.forEach(m => { n = n.replace(m[0], m[1]); }); if (n !== a) e.setAttribute('style', n); }
 function mhBluePane(pane) { if (!pane) return; try { mhBlueEl(pane); pane.querySelectorAll('[style]').forEach(mhBlueEl); if (!pane.__mhObs && window.MutationObserver) { pane.__mhObs = new MutationObserver(ms => { ms.forEach(m => { m.addedNodes.forEach(n => { if (n.nodeType === 1) { mhBlueEl(n); n.querySelectorAll && n.querySelectorAll('[style]').forEach(mhBlueEl); } }); }); }); pane.__mhObs.observe(pane, { childList: true, subtree: true }); } } catch (e) {} }
+
+const MH_SVG = { '🏠': 'M3 11l9-8 9 8M5 10v10h14V10M10 20v-6h4v6', '💰': 'M3 7h15a3 3 0 013 3v8a2 2 0 01-2 2H5a2 2 0 01-2-2zM3 7l12-3v3M16 14h3', '💵': 'M3 7h15a3 3 0 013 3v8a2 2 0 01-2 2H5a2 2 0 01-2-2zM3 7l12-3v3M16 14h3',
+  '💳': 'M3 6h18a1 1 0 011 1v10a1 1 0 01-1 1H3a1 1 0 01-1-1V7a1 1 0 011-1zM2 10h20M6 15h4', '📲': 'M8 2h8a1 1 0 011 1v18a1 1 0 01-1 1H8a1 1 0 01-1-1V3a1 1 0 011-1zM11 18.5h2',
+  '👤': 'M12 4a4 4 0 100 8 4 4 0 000-8zM4 21c0-4 4-7 8-7s8 3 8 7', '📅': 'M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2zM3 10h18M8 3v4M16 3v4',
+  '📢': 'M6 9a6 6 0 0112 0c0 6 2 7 2 7H4s2-1 2-7M10 20a2 2 0 004 0', '📝': 'M6 3h8l5 5v13H6zM14 3v5h5M9 13h6M9 17h4', '📄': 'M6 3h8l5 5v13H6zM14 3v5h5M9 13h6M9 17h4',
+  '🎯': 'M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a4 4 0 100 8 4 4 0 000-8zM12 11.5a.5.5 0 100 1 .5.5 0 000-1z', '🕒': 'M12 3a9 9 0 100 18 9 9 0 000-18zM12 7v5l3 2',
+  '🖨': 'M7 8V3h10v5M6 17H4v-7h16v7h-2M7 14h10v7H7z', '☀': 'M12 8a4 4 0 100 8 4 4 0 000-8zM12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2', '🌙': 'M20 14a8 8 0 01-10-10 8 8 0 1010 10z',
+  '🎓': 'M2 9l10-5 10 5-10 5zM6 11v5c3 2 9 2 12 0v-5', '📈': 'M3 17l6-6 4 4 8-8M15 7h6v6', '🔥': 'M12 3c1 4 5 6 5 11a5 5 0 01-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-10z',
+  '🌱': 'M12 21v-8M12 13c0-4-3-6-7-6 0 4 3 6 7 6zM12 15c0-3 2-5 6-5 0 3-2 5-6 5z', '🏆': 'M8 4h8v5a4 4 0 01-8 0zM8 6H4v2a3 3 0 003 3M16 6h4v2a3 3 0 01-3 3M12 13v4M8 21h8M10 17h4', '🏅': 'M8 4h8v5a4 4 0 01-8 0zM8 6H4v2a3 3 0 003 3M16 6h4v2a3 3 0 01-3 3M12 13v4M8 21h8M10 17h4',
+  '🎉': 'M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z', '🔒': 'M6 11h12v10H6zM8 11V8a4 4 0 018 0v3', '🧭': 'M12 3a9 9 0 100 18 9 9 0 000-18zM15.5 8.5l-2 5-5 2 2-5z',
+  '✍': 'M4 20l4-1 11-11-3-3L5 16zM14 6l3 3', '✎': 'M4 20l4-1 11-11-3-3L5 16zM14 6l3 3', '⬇': 'M12 4v12M7 11l5 5 5-5M5 20h14', '📤': 'M12 16V4M7 9l5-5 5 5M5 20h14', '➕': 'M12 5v14M5 12h14',
+  '🧮': 'M6 3h12a1 1 0 011 1v16a1 1 0 01-1 1H6a1 1 0 01-1-1V4a1 1 0 011-1zM8 7h8M8 12h2M12 12h2M8 16h2M12 16h2', '⚙': 'M12 8a4 4 0 100 8 4 4 0 000-8zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1',
+  '✉': 'M4 5h16a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1zM3 7l9 6 9-6', '🪪': 'M3 5h18a1 1 0 011 1v12a1 1 0 01-1 1H3a1 1 0 01-1-1V6a1 1 0 011-1zM6 10h5M6 14h4M15 9a2 2 0 100 4 2 2 0 000-4z', '🔑': 'M8 11a4 4 0 100 8 4 4 0 000-8zM11 14l9-9M16 8l3 3' };
+const MH_ICO_RE = /(🏠|💰|💵|💳|📲|👤|📅|📢|📝|📄|🎯|🕒|🖨|☀️?|🌙|🎓|📈|🔥|🌱|🏆|🏅|🎉|🔒|🧭|✍|✎|⬇️?|📤|➕|🧮|⚙️?|✉️?|🔑|🪪|🟢|🔴)/g;
+function mhIcoHtml(e) { const k = e.replace(/️/g, ''); if (k === '🟢' || k === '🔴') return '<svg width="0.7em" height="0.7em" viewBox="0 0 10 10" style="vertical-align:.02em"><circle cx="5" cy="5" r="4.5" fill="' + (k === '🟢' ? '#2e9d57' : '#d32f2f') + '"/></svg>'; const d = MH_SVG[k]; if (!d) return e; return '<svg class="mhi" viewBox="0 0 24 24" width="1.2em" height="1.2em" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-.22em;flex:none"><path d="' + d + '"/></svg>'; }
+function mhIcoize(root) { try { if (!root) return; const skip = { SCRIPT: 1, STYLE: 1, TEXTAREA: 1, OPTION: 1, SELECT: 1, INPUT: 1, SVG: 1 }; const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), hits = []; let n; while ((n = w.nextNode())) { if (!n.nodeValue || !MH_ICO_RE.test(n.nodeValue)) { MH_ICO_RE.lastIndex = 0; continue; } MH_ICO_RE.lastIndex = 0; const pe = n.parentNode; if (pe && skip[String(pe.nodeName).toUpperCase()]) continue; hits.push(n); }
+  hits.forEach(n => { const html = escHtml(n.nodeValue).replace(MH_ICO_RE, m => mhIcoHtml(m)); const sp = document.createElement('span'); sp.className = 'mhIcoWrap'; sp.innerHTML = html; n.parentNode.replaceChild(sp, n); }); } catch (e) {} }
+function mhIcoWatch() { const c = document.getElementById('memberViewContainer'); if (!c || c.__icoObs || !window.MutationObserver) return; let busy = false, q = 0; c.__icoObs = new MutationObserver(() => { if (busy || q) return; q = requestAnimationFrame(() => { q = 0; busy = true; mhIcoize(c); busy = false; }); }); c.__icoObs.observe(c, { childList: true, subtree: true, characterData: true }); }
 var mhTab = 'home';
 const MH_TABS = [['home', '🏠', 'Home'], ['savings', '💰', 'Savings'], ['loan', '💳', 'Loan'], ['pay', '📲', 'Pay'], ['me', '👤', 'Me']];
 const MH_COL = { home: ['#2e7d32', '#e3f3e4'], savings: ['#ef6c00', '#fdebd8'], loan: ['#1565c0', '#e1ecf9'], pay: ['#00897b', '#d9f1ee'], me: ['#7b1fa2', '#f0e1f5'] };
 function mhShowTab(tab) {
-  mhTab = tab; try { document.body.classList.toggle('mh-blue', tab !== 'home'); } catch (e) {}
+  mhTab = tab; try { document.body.classList.remove('mh-blue'); } catch (e) {}
   MH_TABS.forEach(x => { const p = document.getElementById('mhPane-' + x[0]); if (p) p.style.display = x[0] === tab ? 'block' : 'none'; });
   document.querySelectorAll('#mhTabBar button').forEach(b => { const on = b.dataset.tab === tab;
-    const bl = tab !== 'home';
-    if (b.dataset.tab === 'pay') { b.style.background = bl ? (on ? '#0d47a1' : '#1565c0') : (on ? '#bf360c' : '#e65100'); b.style.boxShadow = on ? '0 0 0 4px #f2b705,0 4px 10px rgba(0,0,0,.35)' : '0 4px 10px rgba(0,0,0,.35)'; return; }
-    b.style.background = on ? (bl ? '#1565c0' : '#1b5e20') : 'transparent'; b.style.color = on ? '#ffd54f' : '#37474f'; b.style.boxShadow = on ? 'inset 0 -3px 0 #f2b705' : 'none'; b.style.fontWeight = on ? '800' : '700'; });
+    const bl = false;
+    if (b.dataset.tab === 'pay') { b.style.background = 'linear-gradient(145deg,#ecc94b,#b8901a)'; b.style.color = '#2a1f00'; b.style.boxShadow = on ? '0 0 0 3px ' + '#0f3d27' + ',0 4px 12px rgba(0,0,0,.35)' : '0 4px 12px rgba(0,0,0,.35)'; return; }
+    b.style.background = 'transparent'; b.style.color = on ? '#0f3d27' : '#8a8f87'; b.style.boxShadow = on ? 'inset 0 -3px 0 #c9a227' : 'none'; b.style.fontWeight = on ? '800' : '600'; });
   try { const c = document.getElementById('memberViewContainer'); window.scrollTo({ top: Math.max(0, c.getBoundingClientRect().top + window.pageYOffset - 70), behavior: 'auto' }); } catch (e) {}
 }
-function mhTitleRow(icon, label) { return '<div style="font-size:20px;font-weight:800;color:#1b5e20;margin:6px 2px 4px;">' + icon + ' ' + label + '</div>'; }
+function mhTitleRow(icon, label) { return '<div style="font-family:Georgia,\'Times New Roman\',serif;font-size:23px;font-weight:600;letter-spacing:.3px;color:#1b5e20;margin:8px 2px 6px;">' + label + '<div style="width:38px;height:2px;background:#c9a227;margin-top:6px;border-radius:2px;"></div></div>'; }
 function mhAsOfUpdate() { const el = document.getElementById('mhAsOf'); if (!el) return; const on = navigator.onLine !== false; el.querySelector('.mhNet').innerHTML = on ? '🟢 ' + t('Online') : '🔴 ' + t('Offline'); }
 async function memberHomeRender(memberName) {
   const container = document.getElementById('memberViewContainer'), summary = document.getElementById('memberSummaryCards');
@@ -8334,7 +8366,7 @@ async function memberHomeRender(memberName) {
   const lastPay = pays.find(p => p.ic !== '⚠️');
   const nextOf = r => { const rows = schedFor(r.l, r.ch.totalRepayable, r.repaid); return { rows, next: rows.find(x => x.status !== 'Paid') }; };
   const goTab = tab => 'onclick="mhShowTab(\'' + tab + '\')"';
-  const pill = (txt, kind) => { const C = { ok: ['#e8f5e9', '#1b5e20'], warn: ['#fff3e0', '#b45309'], bad: ['#ffebee', '#b71c1c'], info: ['#e3f2fd', '#0d47a1'] }[kind]; return '<span style="display:inline-block;margin:2px 4px 2px 0;padding:4px 11px;border-radius:14px;font-size:13px;font-weight:800;background:' + C[0] + ';color:' + C[1] + ';border:1.5px solid ' + C[1] + ';">● ' + txt + '</span>'; };
+  const pill = (txt, kind) => { const C = { ok: ['#e8f5e9', '#1b5e20'], warn: ['#fff3e0', '#b45309'], bad: ['#ffebee', '#b71c1c'], info: ['#e3f2fd', '#0d47a1'] }[kind]; return '<span data-keep="1" style="display:inline-block;margin:2px 4px 2px 0;padding:4px 11px;border-radius:14px;font-size:13px;font-weight:800;background:' + C[0] + ';color:' + C[1] + ';border:1.5px solid ' + C[1] + ';">● ' + txt + '</span>'; };
   const monthKey = today.slice(0, 7), savedThis = d.myContrib.filter(c => isSavRec(c) && String(c.date || '').slice(0, 7) === monthKey).reduce((a, c) => a + (parseFloat(c.amount) || 0), 0), minM = PORTAL_GOAL.monthMin || 200;
   const pillSav = pill(savedThis >= minM ? (mhLang === 'sw' ? 'Umeweka akiba mwezi huu' : 'Saved this month') : (mhLang === 'sw' ? 'Bado hujaweka akiba mwezi huu' : 'No saving yet this month'), savedThis >= minM ? 'ok' : 'warn');
   let pillLoan = '';
@@ -8346,16 +8378,16 @@ async function memberHomeRender(memberName) {
   }
   const pillRow = '<div style="margin:2px 0 8px;">' + (good ? pill(mhLang === 'sw' ? 'Hali nzuri' : 'Good standing', 'ok') : '') + pillSav + pillLoan + '</div>';
   // ================= HOME =================
-  let home = '<div style="background:linear-gradient(135deg,#1b5e20,#43a047);border-radius:18px;padding:16px;color:#fff;display:flex;gap:14px;align-items:center;margin:4px 0 6px;">' +
-    '<div style="width:70px;height:70px;border-radius:50%;border:3px solid #fff;background:#2e7d32;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;flex:none;">' + (d.photo ? '<img src="' + d.photo.data + '" style="width:100%;height:100%;object-fit:cover;">' : escHtml(initials)) + '</div>' +
-    '<div style="min-width:0;"><div style="font-size:12px;opacity:.85;">' + t('Welcome') + '</div><div style="font-size:19px;font-weight:800;line-height:1.2;">' + escHtml(memberName) + '</div>' +
+  let home = '<div style="background:linear-gradient(135deg,#0d2418,#1b5e20);border:1px solid #c9a227;border-radius:16px;padding:16px;color:#fff;display:flex;gap:14px;align-items:center;margin:4px 0 6px;box-shadow:0 8px 20px rgba(0,0,0,.25);">' +
+    '<div style="width:70px;height:70px;border-radius:50%;border:3px solid #c9a227;background:#2e7d32;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;flex:none;">' + (d.photo ? '<img src="' + d.photo.data + '" style="width:100%;height:100%;object-fit:cover;">' : escHtml(initials)) + '</div>' +
+    '<div style="min-width:0;"><div style="font-size:12px;opacity:.85;">' + t('Welcome') + '</div><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:21px;font-weight:600;line-height:1.2;letter-spacing:.3px;">' + escHtml(memberName) + '</div>' +
     '<div style="font-size:13px;opacity:.95;margin-top:2px;">' + escHtml(member.memberNumber || '') + (member.dateJoined ? ' · ' + t('Member since') + ' ' + escHtml(member.dateJoined) : '') + '</div>' +
     '<div style="display:inline-block;margin-top:6px;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:800;background:' + (good ? '#e8f5e9' : '#fff3cd') + ';color:' + (good ? '#1b5e20' : '#8a5a00') + ';">' + (good ? t('● Good standing') : (active ? t('● Needs attention — loan instalment overdue') : t('● Status: ') + escHtml(member.status))) + '</div></div></div>' +
     '<div id="mhAsOf" style="font-size:11.5px;color:#666;margin:0 2px 8px;display:flex;justify-content:space-between;align-items:center;"><span>' + t('Figures as of') + ' ' + new Date().toTimeString().slice(0, 5) + ' · <span class="mhNet"></span></span><button type="button" id="mhRefresh" style="border:none;background:none;font-size:18px;color:#1b5e20;">↻</button></div>';
   home += pillRow;
   if (lastPay && recDaysFrom(lastPay.date, today) <= 30) home += mhCard('<div style="font-size:15px;font-weight:800;color:#1b5e20;">✔ ' + t('We received your') + ' ' + k(lastPay.amt) + ' ' + t('on') + ' ' + escHtml(lastPay.date) + '</div><div style="font-size:12.5px;color:#444;">' + escHtml(lastPay.what) + '</div>', 'background:#eaf6ec;border:1px solid #2e7d32;margin-top:0;');
-  const tile = (tab, ic, lbl, big, sub, bad) => '<div ' + goTab(tab) + ' style="flex:1;background:' + (bad ? 'linear-gradient(135deg,#b71c1c,#e53935)' : { savings: 'linear-gradient(135deg,#e65100,#ffa726)', loan: 'linear-gradient(135deg,#0d47a1,#42a5f5)', pay: 'linear-gradient(135deg,#00695c,#26a69a)' }[tab]) + ';border-radius:16px;padding:12px 6px;text-align:center;box-shadow:0 3px 8px rgba(0,0,0,.25);cursor:pointer;color:#fff;"><div style="font-size:30px;">' + ic + '</div><div style="font-size:12px;font-weight:800;">' + lbl + '</div><div style="font-size:15px;font-weight:800;margin-top:2px;">' + big + '</div><div style="font-size:10.5px;opacity:.9;">' + sub + '</div></div>';
-  home += '<div style="display:flex;gap:8px;margin:8px 0;">' + tile('savings', '💰', t('Savings'), k(have), pct + '%') + tile('loan', '💳', t('Loan'), running.length ? k(d.outstanding) : '✔ 0', running.length ? (overdue ? '⚠' : '') : t('You have no running loan.').slice(0, 22), overdue) + tile('pay', '📲', t('Pay'), PORTAL_PAY.paybill, 'Paybill') + '</div>';
+  const tile = (tab, ic, lbl, big, sub, bad) => '<div ' + goTab(tab) + ' style="flex:1;background:' + (bad ? '#fff5f5' : '#fffdf7') + ';border:1px solid ' + (bad ? '#e8a5a5' : '#eadfb8') + ';border-top:3px solid ' + (bad ? '#c62828' : '#c9a227') + ';border-radius:14px;padding:12px 4px 10px;text-align:center;box-shadow:0 1px 2px rgba(60,45,0,.08),0 8px 18px rgba(0,0,0,.18);cursor:pointer;color:#1b2b1f;"><div style="font-size:24px;color:' + (bad ? '#c62828' : '#8a6a12') + ';line-height:1.1;">' + ic + '</div><div style="font-size:10.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6b6b6b;margin-top:5px;">' + lbl + '</div><div style="font-family:Georgia,\'Times New Roman\',serif;font-size:18px;font-weight:700;margin-top:3px;color:' + (bad ? '#b71c1c' : '#14301c') + ';">' + big + '</div><div style="font-size:10.5px;color:#777;min-height:13px;">' + sub + '</div></div>';
+  home += '<div style="display:flex;gap:8px;margin:8px 0;">' + tile('savings', '💰', t('Savings'), k(have), pct + '%') + tile('loan', '💳', t('Loan'), running.length ? k(d.outstanding) : '✔ 0', running.length ? (overdue ? '⚠' : '') : (mhLang === 'sw' ? 'Huna mkopo' : 'No running loan'), overdue) + tile('pay', '📲', t('Pay'), PORTAL_PAY.paybill, 'Paybill') + '</div>';
   const urgent = running.map(r => ({ r, n: nextOf(r) })).filter(x => x.n.next).sort((a, b) => a.n.next.due.localeCompare(b.n.next.due))[0];
   if (urgent) { const nx = urgent.n.next, late = nx.status === 'Overdue', dl = recDaysFrom(today, nx.due); home += '<div ' + goTab('loan') + ' class="mh-card" style="border-radius:14px;padding:12px;margin:8px 0;cursor:pointer;background:' + (late ? '#fdecea' : '#eef4fb') + ';color:#111;"><div style="font-size:11px;font-weight:800;color:' + (late ? '#c62828' : '#1565c0') + ';">' + (late ? t('OVERDUE INSTALMENT') : t('NEXT INSTALMENT')) + '</div><div style="font-size:18px;font-weight:800;">' + k(nx.unpaid) + ' <span style="font-size:13px;font-weight:600;">' + t('by') + ' ' + escHtml(nx.due) + '</span></div><div style="font-size:12.5px;font-weight:700;color:' + (late ? '#c62828' : '#333') + ';">' + (late ? t('Overdue by') + ' ' + nx.late + ' ' + t('days') : (dl === 0 ? t('Due today') : dl + ' ' + t('days left'))) + '</div></div>'; }
   if (e) home += '<div ' + goTab('loan') + ' class="mh-card" style="border-radius:14px;padding:11px 12px;margin:8px 0;cursor:pointer;color:#111;background:' + (e.ok ? '#eaf6ec' : '#fdecea') + ';font-size:13.5px;font-weight:700;">' + (e.ok ? '✔ ' + (mhLang === 'sw' ? 'Unastahili mkopo hadi ' + k(e.max) + '. Wasiliana na ofisi au jaza fomu mtandaoni.' : 'You qualify for up to ' + k(e.max) + '. Contact the office or apply online.') : '✘ ' + (mhLang === 'sw' ? 'Bado hujastahili mkopo' : 'Not eligible for a loan yet')) + ' <span style="color:#1b5e20;">›</span></div>';
@@ -8461,23 +8493,24 @@ async function memberHomeRender(memberName) {
     '<button type="button" id="mhPw" style="margin-top:10px;width:100%;padding:12px;border-radius:12px;border:none;background:#37474f;color:#fff;font-weight:800;font-size:14px;">🔑 ' + (mhLang === 'sw' ? 'Badilisha nenosiri langu' : 'Change my password') + '</button>' + '<div style="font-size:11.5px;color:#777;margin:6px 4px;">' + (mhLang === 'sw' ? 'Unaona rekodi zako tu. Ukiona kosa, wasiliana na afisa.' : 'You are viewing your own records only. If any figure looks wrong, contact an official.') + '</div>';
   // ================= MOUNT =================
   root.innerHTML = MH_TABS.map(x => '<div id="mhPane-' + x[0] + '" style="display:none;min-height:72vh;">' + ({ home, savings: sv, loan: ln, pay, me })[x[0]] + '</div>').join('');
-  ['savings', 'loan', 'pay', 'me'].forEach(k => mhBluePane(root.querySelector('#mhPane-' + k)));
+  ['home', 'savings', 'loan', 'pay', 'me'].forEach(k => mhBluePane(root.querySelector('#mhPane-' + k)));
   const slot = (name, node) => { const s2 = root.querySelector('[data-slot="' + name + '"]'); if (s2 && node) s2.appendChild(node); };
   slot('summary', summary); slot('elig', eb); slot('contrib', contribPanel); slot('loans', loansPanel); slot('print', pbtn);
   [contribPanel, loansPanel].forEach(pn => { if (pn) pn.style.display = 'none'; }); if (summary) summary.style.display = '';
   root.querySelectorAll('.mhFullBtn').forEach(b => { b.onclick = () => { const pn = b.dataset.slotFor === 'contrib' ? contribPanel : loansPanel; if (!pn) return; const show = pn.style.display === 'none'; pn.style.display = show ? '' : 'none'; b.textContent = show ? t('Hide full history') : t('Show full history'); }; });
   let bar = document.getElementById('mhTabBar');
   if (!bar) { bar = document.createElement('div'); bar.id = 'mhTabBar'; container.appendChild(bar); }
-  bar.style.cssText = 'position:sticky;bottom:0;z-index:60;display:flex;align-items:center;gap:2px;padding:6px 4px 6px;background:#fff;border-top:2px solid #cfd8cf;box-shadow:0 -2px 8px rgba(0,0,0,.12);margin:0 -4px;overflow:visible;min-height:62px;';
+  bar.style.cssText = 'position:sticky;bottom:0;z-index:60;display:flex;align-items:center;gap:2px;padding:6px 4px 6px;background:#fffdf6;border-top:2px solid #c9a227;box-shadow:0 -4px 14px rgba(0,0,0,.14);margin:0 -4px;overflow:visible;min-height:62px;';
   let loanDot = false; try { loanDot = !!overdue || !!(typeof openReq !== 'undefined' && openReq && /approved|rejected|declined|paid/i.test(String(openReq.status || ''))); } catch (e) {}
   const order = ['home', 'savings', 'pay', 'loan', 'me'], byKey = {}; MH_TABS.forEach(x => byKey[x[0]] = x);
   bar.innerHTML = order.map(k => { const x = byKey[k];
-    if (k === 'pay') return '<div style="flex:1;display:flex;justify-content:center;"><button type="button" data-tab="pay" style="width:66px;height:66px;margin-top:-30px;border-radius:50%;border:4px solid #fff;background:#e65100;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;font-size:12.5px;font-weight:800;padding:0;"><span style="font-size:24px;line-height:1.05;">' + x[1] + '</span>' + t(x[2]) + '</button></div>';
-    return '<div style="flex:1;display:flex;justify-content:center;position:relative;"><button type="button" data-tab="' + k + '" style="border:none;border-radius:22px;padding:5px 8px;font-size:13px;display:flex;flex-direction:column;align-items:center;gap:0;min-width:56px;"><span style="font-size:20px;line-height:1.1;">' + x[1] + '</span>' + t(x[2]) + '</button>' + (k === 'loan' && loanDot ? '<span style="position:absolute;top:0;right:6px;width:12px;height:12px;border-radius:50%;background:#d32f2f;border:2px solid #fff;"></span>' : '') + '</div>'; }).join('');
+    if (k === 'pay') return '<div style="flex:1;display:flex;justify-content:center;"><button type="button" data-tab="pay" style="width:64px;height:64px;margin-top:-30px;border-radius:50%;border:4px solid #fffdf6;background:linear-gradient(145deg,#ecc94b,#b8901a);color:#2a1f00;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;font-size:11.5px;font-weight:800;letter-spacing:.4px;padding:0;box-shadow:0 4px 12px rgba(0,0,0,.35);"><span style="font-size:23px;line-height:1.05;">' + x[1] + '</span>' + t(x[2]) + '</button></div>';
+    return '<div style="flex:1;display:flex;justify-content:center;position:relative;"><button type="button" data-tab="' + k + '" style="border:none;border-radius:0;padding:6px 8px 5px;font-size:11.5px;letter-spacing:.4px;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:56px;"><span style="font-size:21px;line-height:1.1;">' + x[1] + '</span>' + t(x[2]) + '</button>' + (k === 'loan' && loanDot ? '<span style="position:absolute;top:0;right:6px;width:12px;height:12px;border-radius:50%;background:#d32f2f;border:2px solid #fff;"></span>' : '') + '</div>'; }).join('');
   bar.querySelectorAll('button').forEach(b => { b.onclick = () => mhShowTab(b.dataset.tab); });
   container.appendChild(hold); container.appendChild(bar);
   { const hp = root.querySelector('#mhPane-home'); if (hp) hp.insertAdjacentHTML('afterbegin', '<div id="mhCardBan"></div>'); }
   cardReqPortal(root, member, memberName);
+  try { document.body.classList.add('mh-member'); mhIcoize(container); mhIcoWatch(); mhIcoize(document.querySelector('header.topbar')); } catch (e) {}
   mhShowTab(mhTab);
   mhAsOfUpdate(); if (!window.__mhNetWired) { window.__mhNetWired = true; window.addEventListener('online', mhAsOfUpdate); window.addEventListener('offline', mhAsOfUpdate); }
   { const sb = root.querySelector('#mhStmtBtn'); if (sb) sb.onclick = async () => { sb.disabled = true; try { await stmtPrintOne(member); if (SIG.err && SIG.err !== 'not-set') alert('Note: the official signatures could not be loaded (' + SIG.err + '). Please tell the SACCO office.'); } catch (e) { alert('Could not prepare the statement: ' + e.message); } sb.disabled = false; }; }
