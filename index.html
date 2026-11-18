@@ -904,7 +904,7 @@
   #appShell .layout .panel, #appShell #memberViewContainer .panel{background:#f3f7f4;border:none;border-radius:16px;box-shadow:none;}
   #appShell footer.appfoot{color:#a9c4b2;}
   #appShell footer.appfoot b{color:#5fd08f;}
-  /* ---------- Classy member portal (build CK) ---------- */
+  /* ---------- Classy member portal (build CM) ---------- */
   body.mh-member header.topbar{background:linear-gradient(135deg,#050f09,#0f3d27) !important;}
   body.mh-member #appShell{background:linear-gradient(#050f09,#0a2a1a);}
   body.mh-member #memberViewContainer .btn-primary{background:#0f3d27;}
@@ -1076,7 +1076,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CK</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CM</span></p>
   </div>
 </div>
 
@@ -4029,6 +4029,7 @@ function otOpen() {
   const r = otRole(), staff = ['admin', 'chairperson', 'official', 'bookkeeper'].includes(r), top = ['admin', 'chairperson'].includes(r);
   if (!staff) { alert('Office tools are for the Admin, Chairperson, Officials and Bookkeeper.'); return; }
   const items = [
+    ['br', '🏦', 'Bank reconciliation', 'Bank Reconciliation Statement or Profit & Loss (SACCO format), monthly or annual, with areas to amend', top || r === 'bookkeeper'],
     ['rr', '🧾', 'Receipt register', 'All receipts issued, daily totals, print or Excel', true],
     ['mc', '🔒', 'Month-end closing', 'Check a month, then lock it', true],
     ['ar', '⏰', 'Savings arrears & reminders', 'Who missed KES 200 a month, with WhatsApp message', true],
@@ -4040,8 +4041,252 @@ function otOpen() {
     ['sg', '✍', 'Signatures & stamp', 'Chairperson, Secretary, Treasurer signatures and the official stamp for printed documents', r === 'admin']
   ].filter(x => x[4]);
   const ov = otModal('🗂 Office tools', '<p style="font-size:12px;color:#555;margin:6px 0">Tap a tool.</p>' + items.map(x => '<button type="button" class="otGo" data-k="' + x[0] + '" style="display:block;width:100%;text-align:left;margin:6px 0;padding:10px;border:1px solid #cfd8dc;border-radius:10px;background:#f5faf6;cursor:pointer;"><b>' + x[1] + ' ' + x[2] + '</b><br><span style="font-size:12px;color:#555">' + x[3] + '</span></button>').join(''));
-  const fn = { rr: rrOpen, mc: mcOpen, ar: arOpen, rs: rsOpen, dv: dvOpen, an: anOpen, gr: grOpen, bk: bkOpen, sg: sgOpen };
+  const fn = { br: brOpen, rr: rrOpen, mc: mcOpen, ar: arOpen, rs: rsOpen, dv: dvOpen, an: anOpen, gr: grOpen, bk: bkOpen, sg: sgOpen };
   ov.querySelectorAll('.otGo').forEach(b => b.onclick = () => fn[b.dataset.k]().catch(e => alert('Could not open: ' + e.message)));
+}
+
+/* ===== Bank reconciliation & SACCO statements (build CM) ===== */
+var BR_RULES = [['Personnel expenses', /salar|wage|stipend|allowance|payroll|bookkeeper|clerk|casual|staff/i], ['Governance expenses', /board|committee|agm|general meeting|meeting|sitting|honorari|delegat|election|supervis/i], ['Marketing expenses', /advert|marketing|publicity|banner|poster|ushirika|promotion|flyer|brand|t-?shirt|radio/i], ['Depreciation and amortisation', /depreciat|amortis/i]];
+function brCat(item) { const t = String(item || ''); for (const r of BR_RULES) if (r[1].test(t)) return r[0]; return 'Other administrative expenses'; }
+function brD10(s) { return String(s || '').slice(0, 10); }
+function brMonthName(ym) { const p = String(ym).split('-'); return new Date(+p[0], +p[1] - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' }); }
+function brPeriod(kind, val) {
+  if (kind === 'month') { const p = String(val).split('-'), y = +p[0], m = +p[1], last = new Date(y, m, 0).getDate(); return { kind, key: val, from: val + '-01', to: val + '-' + String(last).padStart(2, '0'), label: brMonthName(val), asAt: last + ' ' + brMonthName(val), months: [val] }; }
+  const months = []; for (let i = 1; i <= 12; i++) months.push(val + '-' + String(i).padStart(2, '0'));
+  return { kind, key: String(val), from: val + '-01-01', to: val + '-12-31', label: 'year ended 31 December ' + val, asAt: '31 December ' + val, months };
+}
+async function brStatementData() { try { const html = await ssGet(); if (!html) return null; const m = html.match(/const DATA = (\[[\s\S]*?\]);\s*\n/); return m ? JSON.parse(m[1]) : null; } catch (e) { return null; } }
+async function brLoad() {
+  const C = (n, raw) => getCollectionEntriesWithId('tablebanking', n, raw).catch(() => []);
+  const [members, contrib, loans, repay, fines, exp, oth, ledger, inbox, ver, al, DATA] = await Promise.all([C('member-register'), C('contribution-record', true), C('loan-issued'), C('loan-repayment'), C('fines-penalties'), C('expenditure'), C('other-expenses'), C('stmt-posted'), C('mpesa-inbox'), C('stmt-verified'), aliasLoad().catch(() => null), brStatementData()]);
+  return { members, contrib, loans, repay, fines, exp, oth, ledger, inbox, ver, al, DATA };
+}
+function brBuild(D) {
+  const n = otNum, d10 = brD10, up = s => String(s || '').trim().toUpperCase();
+  const R = [], P = [];
+  D.contrib.forEach(c => R.push({ date: d10(c.date), who: c.memberName || '', amt: n(c.amount), ref: up(c.mpesaRef), kind: c.contributionType === 'Other amount' ? 'Other amount' : (isSavRec(c) ? 'Savings' : 'Share contribution'), id: c.__id }));
+  D.members.forEach(m => { const fee = n(m.registrationFee), sh = n(m.shareCapital), dj = d10(m.dateJoined); if (fee > 0) R.push({ date: dj, who: m.memberName || '', amt: fee, ref: '', kind: 'Registration fee', lump: true }); if (sh > 0) R.push({ date: dj, who: m.memberName || '', amt: sh, ref: '', kind: 'Share capital (register)', lump: true }); });
+  D.repay.forEach(r => R.push({ date: d10(r.date), who: r.memberName || '', amt: n(r.amountRepaid), ref: up(r.mpesaRef), kind: 'Loan repayment' }));
+  D.fines.forEach(r => R.push({ date: d10(r.date), who: r.memberName || '', amt: n(r.amount), ref: up(r.mpesaRef), kind: 'Fine / penalty' }));
+  D.loans.forEach(l => { const gross = n(l.loanAmount), fee = n(l.insuranceFee) + n(l.processingFee); P.push({ date: d10(l.date), who: l.memberName || '', amt: Math.max(0, gross - fee), ref: up(l.mpesaRef), kind: 'Loan disbursed (net of fees)' }); });
+  D.exp.forEach(e => P.push({ date: d10(e.date), who: e.itemBought || '', amt: n(e.amount), ref: '', kind: 'Expenditure', item: e.itemBought || '' }));
+  D.oth.forEach(e => P.push({ date: d10(e.date), who: e.itemBought || '', amt: n(e.amount), ref: '', kind: 'Other expense', item: e.itemBought || '' }));
+  let credits = [], debits = [], span = null;
+  if (D.DATA) {
+    credits = stmtPayMap(D.DATA, D.members, D.al).map(p => ({ date: d10(p.date), amt: n(p.amount), ref: up(p.code), who: p.payer || '', phone: p.phone || '', src: p.src, m: p.m }));
+    debits = D.DATA.filter(r => n(r.debit) > 0).map(r => ({ date: d10(r.iso), amt: n(r.debit), ref: up(r.code), who: r.name || r.details || '', src: r.src === 'simba' ? 'Simba' : 'Co-op' }));
+    const ds = D.DATA.map(r => d10(r.iso)).filter(Boolean).sort(); if (ds.length) span = { from: ds[0], to: ds[ds.length - 1] };
+  }
+  return { R, P, credits, debits, span, haveStmt: !!D.DATA, haveDebits: debits.length > 0 };
+}
+function brBankBalance(D, E) {
+  if (!D.DATA) return null; const by = {}; let ok = true;
+  D.DATA.filter(r => brD10(r.iso) <= E && brD10(r.iso)).forEach(r => { const b = parseFloat(r.balance != null ? r.balance : r.bal); if (isNaN(b)) { ok = false; return; } const k = r.src || 'x', d = brD10(r.iso); if (!by[k] || d >= by[k].d) by[k] = { d, b }; });
+  const ks = Object.keys(by); return ok && ks.length ? ks.reduce((a, k) => a + by[k].b, 0) : null;
+}
+function brCompute(D, B, per, man) {
+  const n = otNum, S = per.from, E = per.to, inP = d => d && d >= S && d <= E, upto = d => !d || d <= E;
+  const sysRefs = new Set(); B.R.concat(B.P).forEach(x => { if (x.ref) sysRefs.add(x.ref); }); D.ledger.forEach(l => { if (l.code) sysRefs.add(String(l.code).trim().toUpperCase()); });
+  const inboxBy = {}; D.inbox.forEach(x => { if (x.mpesaCode) inboxBy[String(x.mpesaCode).trim().toUpperCase()] = x.status || 'Pending'; });
+  const stRefs = new Set(B.credits.map(c => c.ref).filter(Boolean)), stDebRefs = new Set(B.debits.map(c => c.ref).filter(Boolean));
+  // cash book
+  const cbIn = B.R.filter(x => upto(x.date)).reduce((a, x) => a + x.amt, 0), cbOut = B.P.filter(x => upto(x.date)).reduce((a, x) => a + x.amt, 0), CB = cbIn - cbOut;
+  // bank credits not in the system
+  const refless = B.R.filter(x => !x.ref && !x.lump && upto(x.date)), used = new Set();
+  const unCred = [];
+  B.credits.filter(c => c.date <= E).forEach(c => {
+    if (sysRefs.has(c.ref)) return;
+    if (c.m) { const i = refless.findIndex((x, ix) => !used.has(ix) && x.who === c.m.memberName && Math.abs(x.amt - c.amt) < 0.5 && x.date && Math.abs((new Date(x.date) - new Date(c.date)) / 864e5) <= 7); if (i >= 0) { used.add(i); return; } }
+    unCred.push(Object.assign({ pending: inboxBy[c.ref] === 'Pending' }, c));
+  });
+  const addDep = unCred.reduce((a, c) => a + c.amt, 0);
+  // system receipts with M-Pesa code not on the statement
+  const cs = B.span ? B.span.from : '', ce = B.span ? B.span.to : '';
+  const transit = [], notOnStmt = [], before = [];
+  if (B.haveStmt) B.R.filter(x => x.ref && upto(x.date) && !stRefs.has(x.ref)).forEach(x => { if (x.date && x.date < cs) before.push(x); else if (x.date && x.date > ce) transit.push(x); else notOnStmt.push(x); });
+  const lessTransit = transit.concat(notOnStmt).reduce((a, x) => a + x.amt, 0);
+  // payments / debits
+  let unPay = [], unDeb = [];
+  if (B.haveDebits) {
+    const dUsed = new Set();
+    B.P.filter(x => upto(x.date) && x.date >= cs).forEach(x => { let hit = x.ref && stDebRefs.has(x.ref); if (!hit) { const i = B.debits.findIndex((d, ix) => !dUsed.has(ix) && Math.abs(d.amt - x.amt) < 0.5 && Math.abs((new Date(d.date) - new Date(x.date || d.date)) / 864e5) <= 5); if (i >= 0) { dUsed.add(i); hit = true; } } if (!hit) unPay.push(x); });
+    B.debits.forEach((d, ix) => { if (d.date <= E && !dUsed.has(ix) && !(d.ref && sysRefs.has(d.ref))) unDeb.push(d); });
+  }
+  const addUnpres = unPay.reduce((a, x) => a + x.amt, 0) + n(man.unpresented), debNotBook = unDeb.reduce((a, x) => a + x.amt, 0);
+  const intCr = n(man.intCredited), charges = n(man.charges), intDr = n(man.intDebited);
+  const expected = CB + addUnpres + addDep + intCr - lessTransit - debNotBook - charges - intDr;
+  const auto = brBankBalance(D, E), hasActual = man.bankBal !== '' && man.bankBal != null && !isNaN(parseFloat(man.bankBal)), actual = hasActual ? parseFloat(man.bankBal) : auto;
+  const diff = actual == null ? null : Math.round((expected - actual) * 100) / 100;
+  // member check
+  const key = s => String(s || '').trim().toLowerCase(), sys = {}, stm = {}, sysIn = {}, stmIn = {};
+  B.R.filter(x => x.kind !== 'Other amount' && x.who).forEach(x => { const k = key(x.who); if (upto(x.date)) sys[k] = (sys[k] || 0) + x.amt; if (inP(x.date)) sysIn[k] = (sysIn[k] || 0) + x.amt; });
+  B.credits.filter(c => c.m).forEach(c => { const k = key(c.m.memberName); if (c.date <= E) stm[k] = (stm[k] || 0) + c.amt; if (inP(c.date)) stmIn[k] = (stmIn[k] || 0) + c.amt; });
+  const names = {}; D.members.forEach(m => { names[key(m.memberName)] = m; });
+  const more = [], less = [];
+  new Set(Object.keys(sys).concat(Object.keys(stm))).forEach(k => {
+    const s = Math.round((sys[k] || 0) * 100) / 100, t = Math.round((stm[k] || 0) * 100) / 100, df = Math.round((s - t) * 100) / 100; if (Math.abs(df) < 1) return;
+    const m = names[k], vr = m && D.ver.find(v => v.memberId === m.__id), verified = !!(vr && s <= (parseFloat(vr.total) || 0) + 0.5);
+    const row = { no: m ? m.memberNumber || '' : '', name: m ? m.memberName : k, sys: s, stm: t, diff: df, sysIn: Math.round((sysIn[k] || 0) * 100) / 100, stmIn: Math.round((stmIn[k] || 0) * 100) / 100, verified };
+    (df > 0 ? more : less).push(row);
+  });
+  more.sort((a, b) => b.diff - a.diff); less.sort((a, b) => a.diff - b.diff);
+  const noCode = B.R.filter(x => !x.ref && !x.lump && x.kind !== 'Other amount' && inP(x.date));
+  // month table
+  const mrows = per.months.map(mo => { const a = B.R.filter(x => x.date && x.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0), b = B.credits.filter(c => c.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0), pay = B.P.filter(x => x.date && x.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0), dbt = B.debits.filter(c => c.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0); return { mo, sysIn: a, bankIn: b, sysOut: pay, bankOut: dbt, diff: Math.round((a - b) * 100) / 100 }; });
+  const covered = B.haveStmt ? mrows.some(r => r.bankIn > 0 || r.bankOut > 0) : false;
+  return { per, CB, cbIn, cbOut, addUnpres, addDep, intCr, lessTransit, debNotBook, charges, intDr, expected, actual, auto, diff, unCred, transit, notOnStmt, before, unPay, unDeb, more, less, noCode, mrows, covered, span: B.span, haveDebits: B.haveDebits, haveStmt: B.haveStmt, manual: man };
+}
+function brPL(D, B, per, man) {
+  const n = otNum, S = per.from, E = per.to, inP = d => d && d >= S && d <= E, d10 = brD10;
+  const interest = D.repay.filter(r => inP(d10(r.date))).reduce((a, r) => a + n(r.interestPortion), 0);
+  const procFee = D.loans.filter(l => inP(d10(l.date))).reduce((a, l) => a + n(l.processingFee), 0), insur = D.loans.filter(l => inP(d10(l.date))).reduce((a, l) => a + n(l.insuranceFee), 0);
+  const regFees = D.members.filter(m => inP(d10(m.dateJoined))).reduce((a, m) => a + n(m.registrationFee), 0), fines = D.fines.filter(r => inP(d10(r.date))).reduce((a, r) => a + n(r.amount), 0);
+  const invest = n(man.invest), otherOp = n(man.otherOp), intDep = n(man.intDep), borrow = n(man.borrow), divid = n(man.divid), prov = n(man.prov), dep = n(man.dep);
+  const exps = D.exp.map(e => ({ date: d10(e.date), item: e.itemBought || '', amt: n(e.amount), src: 'Expenditure' })).concat(D.oth.map(e => ({ date: d10(e.date), item: e.itemBought || '', amt: n(e.amount), src: 'Other expense' }))).filter(e => inP(e.date));
+  const cat = {}; ['Personnel expenses', 'Governance expenses', 'Marketing expenses', 'Other administrative expenses'].forEach(c => { cat[c] = 0; }); const other = [];
+  exps.forEach(e => { const c = brCat(e.item); cat[c] = (cat[c] || 0) + e.amt; if (c === 'Other administrative expenses') other.push(e); });
+  const depAuto = cat['Depreciation and amortisation'] || 0; delete cat['Depreciation and amortisation'];
+  const totFinInc = interest + procFee + invest + regFees + fines + otherOp, totFinExp = intDep + borrow + divid, nfi = totFinInc - totFinExp, nfiAfter = nfi - prov;
+  const opex = Object.values(cat).reduce((a, v) => a + v, 0) + dep + depAuto, surplus = nfiAfter - opex;
+  const months = per.months.map(mo => { const f = (arr, kf, vf) => arr.filter(r => d10(r[kf]).slice(0, 7) === mo).reduce((a, r) => a + n(r[vf]), 0); const inc = f(D.repay, 'date', 'interestPortion') + f(D.loans, 'date', 'processingFee') + f(D.fines, 'date', 'amount') + D.members.filter(m => d10(m.dateJoined).slice(0, 7) === mo).reduce((a, m) => a + n(m.registrationFee), 0), ex = exps.filter(e => e.date.slice(0, 7) === mo).reduce((a, e) => a + e.amt, 0); return { mo, inc, ex, sur: inc - ex }; });
+  const flags = [];
+  const noInt = D.repay.filter(r => inP(d10(r.date)) && n(r.amountRepaid) > 0 && (r.interestPortion === undefined || r.interestPortion === null || String(r.interestPortion).trim() === ''));
+  if (noInt.length) flags.push({ lvl: 'red', t: noInt.length + ' loan repayment(s) have no interest portion recorded — interest income is understated.', go: 'Loan Repayment records', rows: noInt.slice(0, 12).map(r => [d10(r.date), r.memberName || '', otK(n(r.amountRepaid))]), heads: ['Date', 'Member', 'Repaid'] });
+  const noFee = D.loans.filter(l => inP(d10(l.date)) && n(l.loanAmount) > 0 && (l.processingFee === undefined || String(l.processingFee).trim() === ''));
+  if (noFee.length) flags.push({ lvl: 'amber', t: noFee.length + ' loan(s) issued in the period have no processing fee recorded.', go: 'Loans Issued records', rows: noFee.slice(0, 12).map(l => [d10(l.date), l.memberName || '', otK(n(l.loanAmount))]), heads: ['Date', 'Member', 'Loan'] });
+  const bad = exps.filter(e => !(e.amt > 0) || !String(e.item).trim());
+  if (bad.length) flags.push({ lvl: 'red', t: bad.length + ' expense record(s) have a blank item or a zero amount.', go: 'Expenditure / Other Expenses records', rows: bad.slice(0, 12).map(e => [e.date, e.item || '(blank)', otK(e.amt), e.src]), heads: ['Date', 'Item', 'Amount', 'Record'] });
+  if (other.length > 3) flags.push({ lvl: 'info', t: other.length + ' expense(s) were placed under "Other administrative expenses" because no category word was found. Reword the item (e.g. “Salary…”, “AGM…”, “Advert…”) if they belong elsewhere.', go: '', rows: other.slice(0, 10).map(e => [e.date, e.item, otK(e.amt)]), heads: ['Date', 'Item', 'Amount'] });
+  const undated = D.exp.concat(D.oth).filter(e => !brD10(e.date)).length + D.repay.filter(r => !brD10(r.date)).length + D.loans.filter(r => !brD10(r.date)).length;
+  if (undated) flags.push({ lvl: 'amber', t: undated + ' record(s) have no date and are left out of every period.', go: '', rows: [], heads: [] });
+  const od = B.R.filter(x => x.kind === 'Other amount' && inP(x.date)).reduce((a, x) => a + x.amt, 0); if (od > 0) flags.push({ lvl: 'info', t: 'KES ' + otK(od) + ' of “Other amount” money was received in the period. It is Admin reference only and is not counted as income.', go: '', rows: [], heads: [] });
+  if (!prov && !man.provSet && per.kind === 'year') flags.push({ lvl: 'amber', t: 'Provision for loan losses is KES 0. Use the suggested figure from the loan portfolio or type your own.', go: '', rows: [], heads: [] });
+  return { per, interest, procFee, insur, regFees, fines, invest, otherOp, totFinInc, intDep, borrow, divid, totFinExp, nfi, prov, nfiAfter, cat, dep: dep + depAuto, opex, surplus, months, flags };
+}
+function brFlagsBRS(r, B) {
+  const F = [], k = otK;
+  if (!r.haveStmt) F.push({ lvl: 'red', t: 'No bank statement loaded. Load your Combined Statement file to reconcile against the bank.', rows: [], heads: [] });
+  else {
+    if (r.span && r.span.to < r.per.to) F.push({ lvl: 'amber', t: 'The statement ends on ' + r.span.to + ', before the period end (' + r.per.to + '). Load a newer statement.', rows: [], heads: [] });
+    if (r.span && r.span.from > r.per.from) F.push({ lvl: 'amber', t: 'The statement starts on ' + r.span.from + ', after the period start (' + r.per.from + '). Earlier money cannot be checked.', rows: [], heads: [] });
+    if (r.unCred.length) F.push({ lvl: 'red', t: r.unCred.length + ' payment(s) are on the bank statement but NOT in the system — KES ' + k(r.addDep) + '. Record them (Statement import / M-Pesa Inbox).', rows: r.unCred.map(c => [c.date, c.ref, c.who || (c.m && c.m.memberName) || '', k(c.amt), c.src, c.pending ? 'In M-Pesa Inbox, not posted' : 'Not recorded']), heads: ['Date', 'Code', 'Paid by', 'Amount', 'Source', 'Status'] });
+    const sysNot = r.notOnStmt.concat(r.transit); if (sysNot.length) F.push({ lvl: 'red', t: sysNot.length + ' receipt(s) with an M-Pesa code are in the system but NOT on the statement — KES ' + k(sysNot.reduce((a, x) => a + x.amt, 0)) + '. Check the code and amount, or the receipt may be wrong.', rows: sysNot.map(x => [x.date, x.ref, x.who, k(x.amt), x.kind, (x.date > (r.span ? r.span.to : '')) ? 'After statement end (in transit)' : 'Inside statement period']), heads: ['Date', 'Code', 'Member', 'Amount', 'Type', 'Note'] });
+  }
+  if (r.more.length) F.push({ lvl: 'red', t: r.more.length + ' member(s) have MORE money on the system than on the statement — KES ' + k(r.more.filter(x => !x.verified).reduce((a, x) => a + x.diff, 0)) + ' unverified. Possible double posting, wrong amount, or cash paid outside the bank.', rows: r.more.map(x => [x.no, x.name, k(x.sys), k(x.stm), k(x.diff), 'Period: system ' + k(x.sysIn) + ' / bank ' + k(x.stmIn), x.verified ? 'Verified (kept)' : 'Check']), heads: ['No.', 'Member', 'System', 'Statement', 'System more by', 'This period', 'Status'] });
+  if (r.less.length) F.push({ lvl: 'red', t: r.less.length + ' member(s) have MORE money on the statement than on the system — KES ' + k(r.less.reduce((a, x) => a - x.diff, 0)) + '. Payments received in the bank but not posted to the member.', rows: r.less.map(x => [x.no, x.name, k(x.sys), k(x.stm), k(-x.diff), 'Period: system ' + k(x.sysIn) + ' / bank ' + k(x.stmIn), 'Post it']), heads: ['No.', 'Member', 'System', 'Statement', 'Statement more by', 'This period', 'Status'] });
+  if (r.haveStmt && !r.haveDebits) F.push({ lvl: 'info', t: 'Your statement file has no withdrawals, so loan payouts and expenses cannot be matched. Enter any payments not yet cleared in the box below.', rows: [], heads: [] });
+  if (r.unPay.length) F.push({ lvl: 'amber', t: r.unPay.length + ' payment(s) are in the system but not yet on the bank statement — KES ' + k(r.unPay.reduce((a, x) => a + x.amt, 0)) + ' (loan payouts or expenses not yet cleared).', rows: r.unPay.map(x => [x.date, x.kind, x.who, k(x.amt)]), heads: ['Date', 'Type', 'Paid to', 'Amount'] });
+  if (r.unDeb.length) F.push({ lvl: 'amber', t: r.unDeb.length + ' bank debit(s) are not in the system — KES ' + k(r.debNotBook) + ' (charges, withdrawals). Record them as expenses.', rows: r.unDeb.map(x => [x.date, x.ref, x.who, k(x.amt), x.src]), heads: ['Date', 'Code', 'Details', 'Amount', 'Source'] });
+  if (r.noCode.length) F.push({ lvl: 'info', t: r.noCode.length + ' receipt(s) in this period have no M-Pesa code (KES ' + k(r.noCode.reduce((a, x) => a + x.amt, 0)) + '). They cannot be checked against the bank — confirm they were banked.', rows: r.noCode.slice(0, 15).map(x => [x.date, x.who, k(x.amt), x.kind]), heads: ['Date', 'Member', 'Amount', 'Type'] });
+  r.mrows.filter(m => r.haveStmt && Math.abs(m.diff) >= 1 && (m.bankIn > 0 || m.sysIn > 0)).length && F.push({ lvl: 'amber', t: 'Months where receipts per system and per bank differ: ' + r.mrows.filter(m => Math.abs(m.diff) >= 1).map(m => brMonthName(m.mo).split(' ')[0] + ' (' + (m.diff > 0 ? '+' : '') + k(m.diff) + ')').join(', ') + '. Registration fees and shares are dated by the member’s join date, so a few differences are timing only.', rows: [], heads: [] });
+  if (r.diff == null) F.push({ lvl: 'amber', t: 'Type the closing balance per your bank / M-Pesa statements below to finish the reconciliation.', rows: [], heads: [] });
+  else if (Math.abs(r.diff) >= 1) F.push({ lvl: 'red', t: 'NOT RECONCILED: the balance expected from the cash book is ' + (r.diff > 0 ? 'KES ' + k(r.diff) + ' MORE' : 'KES ' + k(-r.diff) + ' LESS') + ' than the bank statement balance. Work through the red items above, then recalculate.', rows: [], heads: [] });
+  return F;
+}
+function brFlagHtml(F) {
+  if (!F.length) return '<div style="padding:10px;background:#e8f5e9;border-radius:8px;font-weight:700">✔ Nothing to amend.</div>';
+  const col = { red: '#c62828', amber: '#e65100', info: '#1565c0' }, ic = { red: '🔴', amber: '🟠', info: 'ℹ️' };
+  return F.map(f => '<div style="border:1px solid #ddd;border-left:5px solid ' + col[f.lvl] + ';border-radius:8px;padding:8px;margin:8px 0;background:#fff"><div style="font-size:13px;font-weight:700;color:' + col[f.lvl] + '">' + ic[f.lvl] + ' ' + escHtml(f.t) + '</div>' + (f.go ? '<div style="font-size:12px;color:#555">Go to: ' + escHtml(f.go) + '</div>' : '') + (f.rows && f.rows.length ? '<details style="margin-top:4px"><summary style="font-size:12px;cursor:pointer">Show the ' + f.rows.length + ' item(s)</summary>' + otTable(f.heads, f.rows.slice(0, 40), f.heads.map((h, i) => /amount|system|statement|more|loan|repaid/i.test(h) ? i : -1).filter(i => i >= 0)) + (f.rows.length > 40 ? '<div style="font-size:11px;color:#777">…and ' + (f.rows.length - 40) + ' more (print or Excel shows all)</div>' : '') + '</details>' : '') + '</div>').join('');
+}
+function brFlagPrint(F) { return F.map(f => '<h2>' + (f.lvl === 'red' ? 'AMEND: ' : f.lvl === 'amber' ? 'CHECK: ' : 'NOTE: ') + escHtml(f.t) + '</h2>' + (f.rows && f.rows.length ? otPrintTable(f.heads, f.rows, f.heads.map((h, i) => /amount|system|statement|more|loan|repaid/i.test(h) ? i : -1).filter(i => i >= 0)) : '')).join(''); }
+function brBrsRows(r) {
+  const k = x => otK(x), neg = x => x ? '(' + otK(x) + ')' : '0';
+  return [['Balance as per Cash Book (Dr)', k(r.CB), true], ['Add:', '', 'h'],
+    ['Cheques / payments issued but not yet presented (e.g. loan disbursements)', k(r.addUnpres)], ['Deposits by members directly into bank (not yet in cashbook)', k(r.addDep)], ['Interest credited by bank', k(r.intCr)],
+    ['Less:', '', 'h'], ['Cheques / deposits recorded but not yet credited by bank (loan repayments & savings in transit)', neg(r.lessTransit)], ['Bank charges, ledger fees & bank debits not in cashbook', neg(r.charges + r.debNotBook)], ['Interest debited by bank', neg(r.intDr)],
+    ['Balance as per Bank Statement (Cr) — expected', k(r.expected), true], ['Balance actually shown on the bank / M-Pesa statements', r.actual == null ? '— not entered —' : k(r.actual)], ['Unreconciled difference', r.diff == null ? '—' : k(r.diff), true]];
+}
+function brBrsPrint(r, F, who) {
+  const rows = brBrsRows(r);
+  let h = '<h2>Bank Reconciliation Statement as at ' + escHtml(r.per.asAt) + '</h2><table><thead><tr><th>Particulars</th><th class="n">Amount (Kshs)</th></tr></thead><tbody>' + rows.map(x => '<tr' + (x[2] === 'h' ? ' style="background:#e8f0e8"' : '') + '><td' + (x[2] === true || x[2] === 'h' ? ' style="font-weight:bold"' : '') + '>' + escHtml(x[0]) + '</td><td class="n"' + (x[2] === true ? ' style="font-weight:bold"' : '') + '>' + escHtml(x[1]) + '</td></tr>').join('') + '</tbody></table>';
+  h += '<p><b>Status: </b>' + (r.diff != null && Math.abs(r.diff) < 1 ? 'RECONCILED' : r.diff == null ? 'INCOMPLETE — bank balance not entered' : 'NOT RECONCILED — difference KES ' + otK(r.diff)) + '</p>';
+  h += '<h2>Monthly check — receipts per system vs bank</h2>' + otPrintTable(['Month', 'System receipts', 'Bank credits', 'Difference'], r.mrows.map(m => [brMonthName(m.mo), otK(m.sysIn), otK(m.bankIn), otK(m.diff)]), [1, 2, 3]);
+  h += brFlagPrint(F) + '<div class="sig"><div>Prepared by</div><div>Treasurer</div><div>Chairperson</div></div>';
+  return h;
+}
+function brPlRows(p) {
+  const k = otK, neg = x => x ? '(' + otK(x) + ')' : '0', R = [];
+  R.push(['FINANCIAL INCOME', '', 'h'], ['Interest income on loans to members', k(p.interest)], ['Fees & commission on loan portfolio (processing fees)', k(p.procFee)], ['Income from investments (e.g. placements with banks)', k(p.invest)], ['Other operating income (membership fees, fines & penalties, other)', k(p.regFees + p.fines + p.otherOp)], ['    of which registration fees', k(p.regFees)], ['    of which fines & penalties', k(p.fines)], ['Total Financial Income', k(p.totFinInc), true],
+    ['LESS: FINANCIAL EXPENSES', '', 'h'], ["Interest expense on members' deposits", neg(p.intDep)], ['Cost of external borrowings', neg(p.borrow)], ['Dividend expense on member shares', neg(p.divid)], ['Total Financial Expenses', neg(p.totFinExp), true], ['NET FINANCIAL INCOME', k(p.nfi), true],
+    ['LESS: ALLOWANCE FOR LOAN LOSS', '', 'h'], ['Provision for loan losses (net of recoveries)', neg(p.prov)], ['NET FINANCIAL INCOME AFTER LOAN LOSS', k(p.nfiAfter), true],
+    ['LESS: OPERATING EXPENSES', '', 'h'], ['Personnel expenses (salaries, wages, benefits)', neg(p.cat['Personnel expenses'])], ['Governance expenses (board honoraria, AGM costs)', neg(p.cat['Governance expenses'])], ['Marketing expenses (advertising, Ushirika day)', neg(p.cat['Marketing expenses'])], ['Depreciation and amortisation charges', neg(p.dep)], ['Other administrative expenses', neg(p.cat['Other administrative expenses'])], ['Total Operating Expenses', neg(p.opex), true],
+    ['SURPLUS / (DEFICIT) FOR THE ' + (p.per.kind === 'year' ? 'YEAR' : 'MONTH'), p.surplus < 0 ? '(' + otK(-p.surplus) + ')' : k(p.surplus), true]);
+  return R;
+}
+function brPlPrint(p, F) {
+  const rows = brPlRows(p);
+  let h = '<h2>Statement of Comprehensive Income for the ' + escHtml(p.per.label.startsWith('year') ? p.per.label : 'month of ' + p.per.label) + '</h2><table><thead><tr><th>Particulars</th><th class="n">Amount (Kshs)</th></tr></thead><tbody>' + rows.map(x => '<tr' + (x[2] === 'h' ? ' style="background:#e8f0e8"' : '') + '><td' + (x[2] ? ' style="font-weight:bold"' : '') + '>' + escHtml(x[0]) + '</td><td class="n"' + (x[2] === true ? ' style="font-weight:bold"' : '') + '>' + escHtml(x[1]) + '</td></tr>').join('') + '</tbody></table>';
+  h += '<p style="font-size:11px;color:#555">Basis: cash records in the system. Interest income = interest portion of loan repayments received; processing fees as charged at loan issue; loan insurance (KES ' + otK(p.insur) + ') is passed to the insurer and is not income. NAVCDP grant spending is excluded (grant funds).</p>';
+  if (p.per.kind === 'year') h += '<h2>Monthly analysis</h2>' + otPrintTable(['Month', 'Income', 'Expenses', 'Surplus / (deficit)'], p.months.map(m => [brMonthName(m.mo).split(' ')[0], otK(m.inc), otK(m.ex), otK(m.sur)]), [1, 2, 3]);
+  h += brFlagPrint(F) + '<div class="sig"><div>Prepared by</div><div>Treasurer</div><div>Chairperson</div></div>';
+  return h;
+}
+function brXls(kind, per, r, F, p) {
+  const H = c => ({ cells: c, style: 1 }), T = c => ({ cells: c, style: 2 }), num = s => { const t = String(s).replace(/[(),]/g, ''); return t === '' || isNaN(parseFloat(t)) ? s : (String(s).startsWith('(') ? -parseFloat(t) : parseFloat(t)); };
+  const sheets = [];
+  if (kind === 'brs') {
+    sheets.push({ name: 'Bank reconciliation', widths: [84, 18], rows: [H(['Bank Reconciliation Statement as at ' + per.asAt, 'Amount (Kshs)'])].concat(brBrsRows(r).map(x => x[2] ? T([x[0], num(x[1])]) : { cells: [x[0], num(x[1])] })) });
+    sheets.push({ name: 'Monthly check', widths: [20, 18, 18, 18, 18, 18, 18], rows: [H(['Month', 'System receipts', 'Bank credits', 'Difference', 'System payments', 'Bank debits'])].concat(r.mrows.map(m => ({ cells: [brMonthName(m.mo), m.sysIn, m.bankIn, m.diff, m.sysOut, m.bankOut] }))) });
+  } else {
+    sheets.push({ name: 'Comprehensive income', widths: [74, 18], rows: [H(['Statement of Comprehensive Income — ' + per.label, 'Amount (Kshs)'])].concat(brPlRows(p).map(x => x[2] ? T([x[0], num(x[1])]) : { cells: [x[0], num(x[1])] })) });
+    sheets.push({ name: 'Monthly analysis', widths: [20, 18, 18, 18], rows: [H(['Month', 'Income', 'Expenses', 'Surplus / (deficit)'])].concat(p.months.map(m => ({ cells: [brMonthName(m.mo), m.inc, m.ex, m.sur] }))) });
+  }
+  const fr = [H(['Level', 'What to amend', 'Detail 1', 'Detail 2', 'Detail 3', 'Detail 4', 'Detail 5', 'Detail 6'])]; F.forEach(f => { fr.push({ cells: [f.lvl.toUpperCase(), f.t, '', '', '', '', '', ''] }); (f.rows || []).forEach(x => fr.push({ cells: ['', ''].concat(x.map(String)) })); });
+  sheets.push({ name: 'Areas to amend', widths: [8, 80, 16, 26, 14, 14, 24, 24], rows: fr });
+  return xlBook(sheets);
+}
+async function brOpen() {
+  const role = otRole(); if (!['admin', 'chairperson', 'bookkeeper'].includes(role)) { alert('Bank reconciliation is for the Admin, Chairperson and Bookkeeper.'); return; }
+  const now = new Date(), curMonth = now.toISOString().slice(0, 7), curYear = String(now.getFullYear());
+  const inp = 'padding:9px;border:1px solid #bbb;border-radius:8px;font-size:14px;';
+  const ov = otModal('🏦 Bank reconciliation', '<div style="font-size:12.5px;color:#555;margin:4px 0">Choose the statement and the period. The system checks the cash book against your bank / M-Pesa statement and tells you exactly what to amend.</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0"><label style="font-size:12px;font-weight:700">Statement<br><select id="brT" style="' + inp + 'width:100%"><option value="brs">Bank Reconciliation Statement</option><option value="pl">Profit &amp; Loss — Statement of Comprehensive Income</option></select></label>' +
+    '<label style="font-size:12px;font-weight:700">Period<br><select id="brK" style="' + inp + 'width:100%"><option value="month">Monthly</option><option value="year">Annual</option></select></label></div>' +
+    '<div id="brPer" style="margin:6px 0"></div><div id="brSt" style="font-size:12.5px;margin:6px 0"></div>' +
+    '<button type="button" id="brGo" class="btn-primary" style="width:100%;padding:12px;font-size:15px;font-weight:800">▶ Run reconciliation</button><div id="brOut" style="margin-top:10px"></div>');
+  const q = s => ov.querySelector(s); let cache = null;
+  const drawPer = () => { q('#brPer').innerHTML = q('#brK').value === 'month' ? '<label style="font-size:12px;font-weight:700">Month<br><input type="month" id="brV" value="' + curMonth + '" style="' + inp + 'width:100%"></label>' : '<label style="font-size:12px;font-weight:700">Year<br><select id="brV" style="' + inp + 'width:100%">' + [0, 1, 2, 3].map(i => '<option>' + (+curYear - i) + '</option>').join('') + '</select></label>'; };
+  const drawSt = async () => { const D = await brStatementData(); q('#brSt').innerHTML = D ? '✔ Bank statement loaded on this phone: ' + D.length + ' lines. <a href="#" id="brRe">Replace file</a>' : '<span style="color:#c62828">No statement loaded on this phone.</span> <a href="#" id="brRe"><b>Load the Combined Statement file</b></a> (needed for the Bank Reconciliation; the P&amp;L can run without it).'; const a = q('#brRe'); if (a) a.onclick = async e => { e.preventDefault(); const h = await ssPick(); if (!h) return; if (h.indexOf('const DATA') < 0) { alert('That does not look like the Combined Statement Search file.'); return; } await ssPut(h); drawSt(); }; };
+  q('#brK').onchange = drawPer; drawPer(); drawSt();
+  const run = async (manIn) => {
+    const type = q('#brT').value, kind = q('#brK').value, val = q('#brV').value; if (!val) { alert('Choose the period.'); return; }
+    const out = q('#brOut'); out.innerHTML = 'Reading the system…';
+    const D = await brLoad(), B = brBuild(D), per = brPeriod(kind, val), metaKey = (type === 'brs' ? 'brs-' : 'pl-') + per.key;
+    let man = manIn; if (!man) { try { const s = await otCol('ekfs_meta').doc(metaKey).get(); man = s.exists ? s.data() : {}; } catch (e) { man = {}; } }
+    let html = '', res, F, pl;
+    if (type === 'brs') {
+      res = brCompute(D, B, per, man); F = brFlagsBRS(res, B);
+      const ok = res.diff != null && Math.abs(res.diff) < 1, rows = brBrsRows(res);
+      html += '<div style="padding:10px;border-radius:10px;font-weight:800;font-size:14px;background:' + (ok ? '#e8f5e9;color:#1b5e20' : res.diff == null ? '#fff8e1;color:#8a6a12' : '#ffebee;color:#c62828') + '">' + (ok ? '✔ RECONCILED — the cash book agrees with the bank.' : res.diff == null ? '⚠ INCOMPLETE — enter the bank balance below.' : '✖ NOT RECONCILED — difference KES ' + otK(res.diff)) + '</div>' +
+        '<h3 style="font-size:14px;margin:12px 0 4px">Bank Reconciliation Statement as at ' + escHtml(per.asAt) + '</h3>' + '<table style="border-collapse:collapse;width:100%;font-size:13px">' + rows.map(x => '<tr style="' + (x[2] === 'h' ? 'background:#e8f0e8;' : '') + (x[2] === true ? 'font-weight:800;border-top:1px solid #999;' : '') + '"><td style="padding:5px 6px;border-bottom:1px solid #eee">' + escHtml(x[0]) + '</td><td style="padding:5px 6px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap">' + escHtml(x[1]) + '</td></tr>').join('') + '</table>' +
+        '<div style="background:#f5faf6;border:1px solid #cfd8cf;border-radius:10px;padding:8px;margin:10px 0"><div style="font-size:12.5px;font-weight:800;margin-bottom:4px">Your figures from the bank (saved for this period)</div>' +
+        [['bankBal', 'Closing balance per bank / M-Pesa statements (Co-op + Simba)' + (res.auto != null ? ' — read from file: ' + otK(res.auto) : '')], ['unpresented', 'Other payments issued, not yet cleared by the bank'], ['intCredited', 'Interest credited by the bank'], ['charges', 'Bank charges & ledger fees'], ['intDebited', 'Interest debited by the bank']].map(x => '<label style="display:block;font-size:12px;margin:4px 0">' + x[1] + '<br><input type="number" step="0.01" id="brM_' + x[0] + '" value="' + escHtml(man[x[0]] == null ? '' : man[x[0]]) + '" style="' + inp + 'width:100%"></label>').join('') +
+        '<button type="button" id="brRe2" class="btn-secondary" style="margin-top:4px;padding:9px 14px">💾 Save &amp; recalculate</button></div>' +
+        '<h3 style="font-size:14px;margin:12px 0 4px">Areas to amend (' + F.filter(f => f.lvl !== 'info').length + ')</h3>' + brFlagHtml(F) +
+        '<h3 style="font-size:14px;margin:12px 0 4px">Month by month — system vs bank</h3>' + otTable(['Month', 'System', 'Bank', 'Difference'], res.mrows.map(m => [brMonthName(m.mo), otK(m.sysIn), otK(m.bankIn), { html: '<b style="color:' + (Math.abs(m.diff) >= 1 && res.haveStmt ? '#c62828' : '#2e7d32') + '">' + otK(m.diff) + '</b>' }]), [1, 2, 3]);
+    } else {
+      // suggested provision from portfolio
+      let sug = 0; try { const rates = { 'Performing': 0.01, 'Delinquent': 0.05, 'Watchful': 0.1, 'Sub-standard': 0.25, 'Doubtful': 0.5, 'Loss': 1 }; const pq = await computePortfolioQuality(); pq.items.forEach(i => { sug += i.balance * (rates[i.stage] != null ? rates[i.stage] : 0.01); }); sug = Math.round(sug); } catch (e) {}
+      const depSug = Math.round(otNum(0)); void depSug;
+      if (man.prov == null && kind === 'year') man = Object.assign({}, man, { prov: sug, provSet: false });
+      pl = brPL(D, B, per, man); F = pl.flags;
+      // agreement with bank
+      if (B.haveStmt) { const inP = d => d >= per.from && d <= per.to, sysR = B.R.filter(x => inP(x.date) && x.kind !== 'Other amount').reduce((a, x) => a + x.amt, 0), bk = B.credits.filter(c => inP(c.date)).reduce((a, c) => a + c.amt, 0); if (Math.abs(sysR - bk) >= 1) F.push({ lvl: 'amber', t: 'Receipts per system (KES ' + otK(sysR) + ') and credits per bank statement (KES ' + otK(bk) + ') differ by KES ' + otK(sysR - bk) + ' in this period. Run the Bank Reconciliation Statement for the detail.', rows: [], heads: [] }); else F.push({ lvl: 'info', t: 'Receipts per system agree with the bank statement for this period (KES ' + otK(sysR) + ').', rows: [], heads: [] }); }
+      const rows = brPlRows(pl);
+      html += '<h3 style="font-size:14px;margin:4px 0">Statement of Comprehensive Income — ' + escHtml(per.label) + '</h3><table style="border-collapse:collapse;width:100%;font-size:13px">' + rows.map(x => '<tr style="' + (x[2] === 'h' ? 'background:#e8f0e8;font-weight:700;' : '') + (x[2] === true ? 'font-weight:800;border-top:1px solid #999;' : '') + '"><td style="padding:5px 6px;border-bottom:1px solid #eee">' + escHtml(x[0]) + '</td><td style="padding:5px 6px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap">' + escHtml(x[1]) + '</td></tr>').join('') + '</table>' +
+        '<div style="background:#f5faf6;border:1px solid #cfd8cf;border-radius:10px;padding:8px;margin:10px 0"><div style="font-size:12.5px;font-weight:800;margin-bottom:4px">Items not kept in the system — type them (saved for this period)</div>' +
+        [['invest', 'Income from investments'], ['otherOp', 'Other operating income (not in the records)'], ['intDep', "Interest expense on members' deposits"], ['borrow', 'Cost of external borrowings'], ['divid', 'Dividend expense on member shares'], ['prov', 'Provision for loan losses' + (sug ? ' — suggested from the loan portfolio today: ' + otK(sug) : '')], ['dep', 'Depreciation (add to any found in the expense items)']].map(x => '<label style="display:block;font-size:12px;margin:4px 0">' + x[1] + '<br><input type="number" step="0.01" id="brM_' + x[0] + '" value="' + escHtml(man[x[0]] == null ? '' : man[x[0]]) + '" style="' + inp + 'width:100%"></label>').join('') +
+        '<button type="button" id="brRe2" class="btn-secondary" style="margin-top:4px;padding:9px 14px">💾 Save &amp; recalculate</button></div>' +
+        '<h3 style="font-size:14px;margin:12px 0 4px">Checks (' + F.filter(f => f.lvl !== 'info').length + ' to look at)</h3>' + brFlagHtml(F) + (per.kind === 'year' ? '<h3 style="font-size:14px;margin:12px 0 4px">Monthly analysis</h3>' + otTable(['Month', 'Income', 'Expenses', 'Surplus'], pl.months.map(m => [brMonthName(m.mo).split(' ')[0], otK(m.inc), otK(m.ex), otK(m.sur)]), [1, 2, 3]) : '');
+    }
+    html += '<div style="display:flex;gap:8px;margin-top:10px"><button type="button" id="brPr" class="btn-primary" style="flex:1;padding:11px">🖨 Print</button><button type="button" id="brXl" class="btn-secondary" style="flex:1;padding:11px">📊 Excel</button></div>';
+    out.innerHTML = html;
+    const title = (type === 'brs' ? 'Bank Reconciliation Statement — ' : 'Statement of Comprehensive Income — ') + per.label;
+    q('#brPr').onclick = () => openPrintWindow(title, type === 'brs' ? brBrsPrint(res, F) : brPlPrint(pl, F));
+    q('#brXl').onclick = () => { try { dcSave('EKFS_' + (type === 'brs' ? 'Bank_Reconciliation_' : 'Comprehensive_Income_') + per.key + '.xlsx', brXls(type, per, res, F, pl), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); } catch (e) { alert('Could not build the Excel file: ' + e.message); } };
+    q('#brRe2').onclick = async () => { const m = {}; out.querySelectorAll('input[id^="brM_"]').forEach(i => { m[i.id.slice(4)] = i.value; }); if (type === 'brs') { m.bankBal = m.bankBal; m.unpresented = m.unpresented; m.intCredited = m.intCredited; } try { const se = getSession(); await otCol('ekfs_meta').doc(metaKey).set(Object.assign({}, m, { by: se.username, at: new Date().toISOString(), provSet: true })); try { auditLog('saved reconciliation figures', 'ekfs_meta', metaKey, title); } catch (e) {} } catch (e) { alert('Could not save: ' + e.message); } const mm = Object.assign({}, m, { provSet: true }); run(type === 'brs' ? { bankBal: mm.bankBal, unpresented: mm.unpresented, intCredited: mm.intCredited, charges: mm.charges, intDebited: mm.intDebited } : mm); };
+  };
+  q('#brGo').onclick = () => run().catch(e => { q('#brOut').innerHTML = '<span style="color:#c62828">Could not run: ' + escHtml(e.message) + '</span>'; });
 }
 
 /* ---- 1. Receipt register ---- */
@@ -4361,6 +4606,16 @@ async function msgTap(kind) {
   const sel = msgPickWire(body, members, 'wt', hasP);
   body.querySelector('#wtT').onchange = e => { body.querySelector('#wtB').value = MSG_TPL[e.target.value][1]; upd(); };
   const upd = () => { const l = body.querySelector('#wtLen'); if (l) { const n = body.querySelector('#wtB').value.length; l.textContent = n + ' characters (' + Math.max(1, Math.ceil(n / 160)) + ' SMS per member)'; } }; body.querySelector('#wtB').oninput = upd;
+  if (!isWa) { const go = body.querySelector('#wtGo'), bb = document.createElement('div'); bb.style.cssText = 'margin:8px 0;padding:10px;border:2px solid #1b5e20;border-radius:12px;background:#f1f8e9';
+    bb.innerHTML = '<button type="button" id="wtAll" class="btn-primary" style="width:100%;padding:13px;font-size:15px;font-weight:800">📨 Send to ALL selected in one tap</button><div style="font-size:12px;color:#444;margin-top:6px">Opens your Messages app with <b>all selected numbers</b> and your message ready — just tap Send once. Batch size: <select id="wtBS"><option value="15">15</option><option value="25" selected>25</option><option value="40">40</option></select> members per batch. The same text goes to everyone, so {name} is replaced by “Member” here. Use the list below if you want each name.</div><div id="wtAllOut" style="margin-top:6px"></div>';
+    go.parentNode.insertBefore(bb, go);
+    bb.querySelector('#wtAll').onclick = () => { const list = sel().filter(hasP), txt = body.querySelector('#wtB').value.trim(); if (!list.length) { alert('Select at least one member with a phone number.'); return; } if (!txt) { alert('Write a message.'); return; }
+      if (/\[(DATE|TIME|PLACE)\]/.test(txt) && !confirm('The message still contains [DATE], [TIME] or [PLACE]. Continue?')) return;
+      const plain = txt.replace(/\{(name|first)\}/g, 'Member').replace(/\{no\}/g, ''), bs = parseInt(bb.querySelector('#wtBS').value, 10) || 25, nums = [...new Set(list.map(m => arPhone(m.contact)))].filter(Boolean), batches = []; for (let i = 0; i < nums.length; i += bs) batches.push(nums.slice(i, i + bs));
+      const out = bb.querySelector('#wtAllOut'); let done = 0;
+      out.innerHTML = '<div id="wtAP" style="font-size:13px;font-weight:700;margin-bottom:4px"></div>' + batches.map((b, i) => '<a class="btn-primary wtBatch" data-i="' + i + '" href="sms:' + b.map(n => '+' + n).join(',') + '?body=' + encodeURIComponent(plain) + '" style="display:block;text-align:center;padding:11px;border-radius:10px;text-decoration:none;margin-bottom:6px">' + (batches.length > 1 ? 'Open batch ' + (i + 1) + ' of ' + batches.length + ' (' + b.length + ' members)' : 'Open Messages — ' + b.length + ' members') + '</a>').join('') + '<div style="font-size:11.5px;color:#666">If your phone sends it as a group chat, turn on “Send as individual messages” in the Messages app settings so members do not see each other.</div>';
+      const upd = () => { out.querySelector('#wtAP').textContent = done + ' of ' + batches.length + ' batch(es) opened'; if (done === batches.length) msgLog('sms', body.querySelector('#wtF').value, nums.length, 'bulk'); };
+      out.querySelectorAll('.wtBatch').forEach(a => a.addEventListener('click', () => { if (!a.dataset.d) { a.dataset.d = '1'; a.style.opacity = '.55'; a.textContent = '✔ ' + a.textContent; done++; setTimeout(upd, 300); } })); upd(); try { out.querySelector('.wtBatch').click(); } catch (e) {} }; }
   body.querySelector('#wtGo').onclick = () => {
     const list = sel(), txt = body.querySelector('#wtB').value.trim(); if (!list.length) { alert('Select at least one member.'); return; } if (!txt) { alert('Write a message.'); return; }
     if (/\[(DATE|TIME|PLACE)\]/.test(txt) && !confirm('The message still contains [DATE], [TIME] or [PLACE]. Continue?')) return;
@@ -7046,7 +7301,7 @@ function cardNavSetup() {
   if ((getSession() || {}).role === 'admin' && !document.getElementById('stiNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'stiNavBtn'; b.textContent = '📥 Statement import'; b.style.cssText = 'flex:0 0 auto;background:#1f3864!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', stiOpen); nav.appendChild(b); }
   if ((getSession() || {}).role === 'admin' && !document.getElementById('rnNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'rnNavBtn'; b.textContent = '🔢 Member numbers'; b.style.cssText = 'flex:0 0 auto;background:#4a148c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', rnOpen); nav.appendChild(b); }
   if ((getSession() || {}).role === 'admin' && !document.getElementById('stNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'stNavBtn'; b.textContent = '🔁 Share transfer'; b.style.cssText = 'flex:0 0 auto;background:#1f3864!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', stOpen); nav.appendChild(b); }
-  if (['admin', 'chairperson', 'official', 'bookkeeper'].includes((getSession() || {}).role) && !document.getElementById('otNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'otNavBtn'; b.textContent = '🗂 Office tools'; b.style.cssText = 'flex:0 0 auto;background:#00695c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', otOpen); nav.appendChild(b); setTimeout(() => { try { bkBanner(); } catch (e) {} }, 1500); }
+  if (['admin', 'chairperson', 'official', 'bookkeeper'].includes((getSession() || {}).role) && !document.getElementById('otNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'otNavBtn'; b.textContent = '🗂 Office tools'; b.style.cssText = 'flex:0 0 auto;background:#00695c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', otOpen); nav.appendChild(b); if (['admin', 'chairperson', 'bookkeeper'].includes((getSession() || {}).role) && !document.getElementById('brNavBtn')) { const bb = document.createElement('button'); bb.type = 'button'; bb.id = 'brNavBtn'; bb.textContent = '🏦 Bank reconciliation'; bb.style.cssText = 'flex:0 0 auto;background:#1b5e20!important;color:#fff!important;border-radius:24px;'; bb.addEventListener('click', () => brOpen().catch(e => alert('Could not open: ' + e.message))); nav.appendChild(bb); } setTimeout(() => { try { bkBanner(); } catch (e) {} }, 1500); }
   if (['admin', 'chairperson', 'official'].includes((getSession() || {}).role) && !document.getElementById('msNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'msNavBtn'; b.textContent = '📑 Membership summary'; b.style.cssText = 'flex:0 0 auto;background:#37474f!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', msOpen); nav.appendChild(b); }
   if (['admin', 'chairperson', 'official'].includes((getSession() || {}).role) && !document.getElementById('dpNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'dpNavBtn'; b.textContent = '🔍 Duplicates'; b.style.cssText = 'flex:0 0 auto;background:#b71c1c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', dpOpen); nav.appendChild(b); }
   { const w = nav.querySelector('[data-v=ward]'); if (w) { let ref = w; ['idcNavBtn', 'crqNavBtn', 'attNavBtn', 'scanNavBtn'].forEach(id => { const b = document.getElementById(id); if (b) { if (ref.nextElementSibling !== b) ref.after(b); ref = b; } }); } }
