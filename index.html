@@ -904,7 +904,7 @@
   #appShell .layout .panel, #appShell #memberViewContainer .panel{background:#f3f7f4;border:none;border-radius:16px;box-shadow:none;}
   #appShell footer.appfoot{color:#a9c4b2;}
   #appShell footer.appfoot b{color:#5fd08f;}
-  /* ---------- Classy member portal (build CO) ---------- */
+  /* ---------- Classy member portal (build CP) ---------- */
   body.mh-member header.topbar{background:linear-gradient(135deg,#050f09,#0f3d27) !important;}
   body.mh-member #appShell{background:linear-gradient(#050f09,#0a2a1a);}
   body.mh-member #memberViewContainer .btn-primary{background:#0f3d27;}
@@ -1076,7 +1076,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CO</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CP</span></p>
   </div>
 </div>
 
@@ -4090,7 +4090,7 @@ function otOpen() {
   ov.querySelectorAll('.otGo').forEach(b => b.onclick = () => fn[b.dataset.k]().catch(e => alert('Could not open: ' + e.message)));
 }
 
-/* ===== Bank reconciliation & SACCO statements (build CO) ===== */
+/* ===== Bank reconciliation & SACCO statements (build CP) ===== */
 var BR_RULES = [['Personnel expenses', /salar|wage|stipend|allowance|payroll|bookkeeper|clerk|casual|staff/i], ['Governance expenses', /board|committee|agm|general meeting|meeting|sitting|honorari|delegat|election|supervis/i], ['Marketing expenses', /advert|marketing|publicity|banner|poster|ushirika|promotion|flyer|brand|t-?shirt|radio/i], ['Depreciation and amortisation', /depreciat|amortis/i]];
 function brCat(item) { const t = String(item || ''); for (const r of BR_RULES) if (r[1].test(t)) return r[0]; return 'Other administrative expenses'; }
 function brD10(s) { return String(s || '').slice(0, 10); }
@@ -4136,6 +4136,7 @@ function brCompute(D, B, per, man) {
   const stRefs = new Set(B.credits.map(c => c.ref).filter(Boolean)), stDebRefs = new Set(B.debits.map(c => c.ref).filter(Boolean));
   // cash book
   const cbIn = B.R.filter(x => upto(x.date)).reduce((a, x) => a + x.amt, 0), cbOut = B.P.filter(x => upto(x.date)).reduce((a, x) => a + x.amt, 0), CB = cbIn - cbOut;
+  const outK = kd => B.P.filter(x => upto(x.date) && x.kind === kd).reduce((a, x) => a + x.amt, 0), cbLoans = outK('Loan disbursed (net of fees)'), cbExp = outK('Expenditure'), cbOth = outK('Other expense');
   // bank credits not in the system
   const refless = B.R.filter(x => !x.ref && !x.lump && upto(x.date)), used = new Set();
   const unCred = [];
@@ -4180,7 +4181,7 @@ function brCompute(D, B, per, man) {
   // month table
   const mrows = per.months.map(mo => { const a = B.R.filter(x => x.date && x.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0), b = B.credits.filter(c => c.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0), pay = B.P.filter(x => x.date && x.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0), dbt = B.debits.filter(c => c.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0); return { mo, sysIn: a, bankIn: b, sysOut: pay, bankOut: dbt, diff: Math.round((a - b) * 100) / 100 }; });
   const covered = B.haveStmt ? mrows.some(r => r.bankIn > 0 || r.bankOut > 0) : false;
-  return { per, CB, cbIn, cbOut, addUnpres, addDep, intCr, lessTransit, debNotBook, charges, intDr, expected, actual, auto, diff, unCred, transit, notOnStmt, before, unPay, unDeb, more, less, noCode, mrows, covered, span: B.span, haveDebits: B.haveDebits, haveStmt: B.haveStmt, manual: man };
+  return { per, CB, cbIn, cbOut, cbLoans, cbExp, cbOth, addUnpres, addDep, intCr, lessTransit, debNotBook, charges, intDr, expected, actual, auto, diff, unCred, transit, notOnStmt, before, unPay, unDeb, more, less, noCode, mrows, covered, span: B.span, haveDebits: B.haveDebits, haveStmt: B.haveStmt, manual: man };
 }
 function brPL(D, B, per, man) {
   const n = otNum, S = per.from, E = per.to, inP = d => d && d >= S && d <= E, d10 = brD10;
@@ -4237,7 +4238,7 @@ function brFlagHtml(F) {
 function brFlagPrint(F) { return F.map(f => '<h2>' + (f.lvl === 'red' ? 'AMEND: ' : f.lvl === 'amber' ? 'CHECK: ' : 'NOTE: ') + escHtml(f.t) + '</h2>' + (f.rows && f.rows.length ? otPrintTable(f.heads, f.rows, f.heads.map((h, i) => /amount|system|statement|more|loan|repaid/i.test(h) ? i : -1).filter(i => i >= 0)) : '')).join(''); }
 function brBrsRows(r) {
   const k = x => otK(x), neg = x => x ? '(' + otK(x) + ')' : '0';
-  return [['Balance as per Cash Book (Dr)', k(r.CB), true], ['Add:', '', 'h'],
+  return [['Total receipts recorded in the system (to ' + r.per.asAt + ')', k(r.cbIn)], ['Less: Loans disbursed (net of fees)', neg(r.cbLoans)], ['Less: Expenditure record', neg(r.cbExp)], ['Less: Other Expenditure record', neg(r.cbOth)], ['Balance as per Cash Book (Dr)', k(r.CB), true], ['Add:', '', 'h'],
     ['Cheques / payments issued but not yet presented (e.g. loan disbursements)', k(r.addUnpres)], ['Deposits by members directly into bank (not yet in cashbook)', k(r.addDep)], ['Interest credited by bank', k(r.intCr)],
     ['Less:', '', 'h'], ['Cheques / deposits recorded but not yet credited by bank (loan repayments & savings in transit)', neg(r.lessTransit)], ['Bank charges, ledger fees & bank debits not in cashbook', neg(r.charges + r.debNotBook)], ['Interest debited by bank', neg(r.intDr)],
     ['Balance as per Bank Statement (Cr) — expected', k(r.expected), true], ['Balance actually shown on the bank / M-Pesa statements', r.actual == null ? '— not entered —' : k(r.actual)], ['Unreconciled difference', r.diff == null ? '—' : k(r.diff), true]];
