@@ -904,7 +904,7 @@
   #appShell .layout .panel, #appShell #memberViewContainer .panel{background:#f3f7f4;border:none;border-radius:16px;box-shadow:none;}
   #appShell footer.appfoot{color:#a9c4b2;}
   #appShell footer.appfoot b{color:#5fd08f;}
-  /* ---------- Classy member portal (build CM) ---------- */
+  /* ---------- Classy member portal (build CO) ---------- */
   body.mh-member header.topbar{background:linear-gradient(135deg,#050f09,#0f3d27) !important;}
   body.mh-member #appShell{background:linear-gradient(#050f09,#0a2a1a);}
   body.mh-member #memberViewContainer .btn-primary{background:#0f3d27;}
@@ -1076,7 +1076,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CM</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CO</span></p>
   </div>
 </div>
 
@@ -3609,9 +3609,11 @@ function regPrintBarSync() {
   document.getElementById('regPrintGo').onclick = () => regPrintList(document.getElementById('regPrintSel').value).catch(e => alert('Could not print: ' + e.message));
   if ((getSession() || {}).role === 'admin') {
     const b2 = document.createElement('div'); b2.id = 'regXlsBar'; b2.style.cssText = bar.style.cssText;
-    b2.innerHTML = '<b style="font-size:13px">📊 Statement payments (Excel):</b><select id="regXlsSel" style="flex:1;min-width:190px;padding:8px;border-radius:6px;">' + Object.keys(REG_LABELS).filter(k => k !== 'none').map(k => '<option value="' + k + '">' + REG_LABELS[k] + '</option>').join('') + '</select><button type="button" class="btn-primary btn-small" id="regXlsGo">Download Excel</button><span style="font-size:12px;color:#37474f;width:100%">One line per payment: member no., name, date, amount, M-Pesa code — member 1 first, then 2, 3…</span>';
+    b2.innerHTML = '<b style="font-size:13px">📊 Statement payments by month (Excel):</b><select id="regXlsSel" style="flex:1;min-width:150px;padding:8px;border-radius:6px;">' + Object.keys(REG_LABELS).filter(k => k !== 'none').map(k => '<option value="' + k + '">' + REG_LABELS[k] + '</option>').join('') + '</select><select id="regXlsPer" style="padding:8px;border-radius:6px;"><option value="all">All months</option><option value="month">One month</option><option value="year">One year</option></select><span id="regXlsPv"></span><button type="button" class="btn-primary btn-small" id="regXlsGo">Download Excel</button><span style="font-size:12px;color:#37474f;width:100%">Payments arranged month by month (member 1 first within each month), then a reconciliation of the chosen month or year against the system.</span>';
     bar.parentNode.insertBefore(b2, bar.nextSibling);
-    document.getElementById('regXlsGo').onclick = () => stmtXlsRun(document.getElementById('regXlsSel').value).catch(e => alert('Could not build the Excel: ' + e.message));
+    const xp = document.getElementById('regXlsPer'), xv = document.getElementById('regXlsPv'), cy = new Date().getFullYear();
+    xp.onchange = () => { xv.innerHTML = xp.value === 'month' ? '<input type="month" id="regXlsV" value="' + new Date().toISOString().slice(0, 7) + '" style="padding:7px;border-radius:6px;">' : xp.value === 'year' ? '<select id="regXlsV" style="padding:8px;border-radius:6px;">' + [0, 1, 2, 3].map(i => '<option>' + (cy - i) + '</option>').join('') + '</select>' : ''; };
+    document.getElementById('regXlsGo').onclick = () => { const v = document.getElementById('regXlsV'); stmtMonthRun(document.getElementById('regXlsSel').value, xp.value, v ? v.value : '').catch(e => alert('Could not build the Excel: ' + e.message)); };
   }
   const rl = (getSession() || {}).role;
   if (rl === 'admin' || rl === 'bookkeeper') {
@@ -3818,6 +3820,49 @@ async function stmtXlsRun(kind) {
   const r = stmtXlsBuild(DATA, members, al, kind);
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([r.bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); a.download = 'EKFS_Statement_Payments_By_Member_' + new Date().toISOString().slice(0, 10) + '.xlsx'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
   alert('Excel ready: ' + r.members + ' members, ' + r.payments + ' payments, KES ' + r.total.toLocaleString() + '. ' + r.unmatched + ' statement payments could not be matched to a member (see the last sheet).');
+}
+
+
+function stmtMonthBuild(DATA, members, al, sys, o) {
+  const d10 = x => String(x || '').slice(0, 10), nn = x => parseFloat(x) || 0;
+  const from = o.per === 'month' ? o.val + '-01' : o.per === 'year' ? o.val + '-01-01' : '0000-01-01', to = o.per === 'month' ? o.val + '-31' : o.per === 'year' ? o.val + '-12-31' : '9999-12-31';
+  const inP = d => d >= from && d <= to, catOk = m => o.kind === 'all' || regStatusOf(m) === o.kind, key = x => String(x || '').trim().toLowerCase();
+  const pays = stmtPayMap(DATA, members, al).map(p => Object.assign({}, p, { date: d10(p.date) })), mNo = m => extractMemberNum(m.memberNumber);
+  const matched = pays.filter(p => p.m && inP(p.date) && catOk(p.m)), un = o.kind === 'all' ? pays.filter(p => !p.m && inP(p.date)) : [];
+  const mon = mo => { const q = mo.split('-'); return new Date(+q[0], +q[1] - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' }).toUpperCase(); };
+  const byMo = {}; matched.forEach(p => { (byMo[p.date.slice(0, 7)] = byMo[p.date.slice(0, 7)] || []).push(p); });
+  const R = [{ cells: ['Member No.', 'Member name', 'Date paid', 'Amount (KES)', 'M-Pesa code', 'Paid from (name on statement)', 'Source'], style: 1 }], M = [{ cells: ['Month', 'No. of payments', 'No. of members', 'Total paid (KES)'], style: 1 }]; let grand = 0, cnt = 0;
+  Object.keys(byMo).sort().forEach(mo => { const L = byMo[mo].sort((a, b) => mNo(a.m) - mNo(b.m) || a.date.localeCompare(b.date)); let tot = 0; R.push({ cells: [mon(mo), '', '', '', '', '', ''], style: 1 });
+    L.forEach(p => { R.push({ cells: [p.m.memberNumber || '', p.m.memberName || '', p.date, p.amount, p.code, p.payer, p.src] }); tot += p.amount; });
+    R.push({ cells: ['', 'Total — ' + mon(mo) + ' (' + new Set(L.map(p => p.m.__id)).size + ' members, ' + L.length + ' payments)', '', tot, '', '', ''], style: 2 }); M.push({ cells: [mon(mo), L.length, new Set(L.map(p => p.m.__id)).size, tot] }); grand += tot; cnt += L.length; });
+  R.push({ cells: ['', 'GRAND TOTAL (' + cnt + ' payments)', '', grand, '', '', ''], style: 1 }); M.push({ cells: ['TOTAL', cnt, '', grand], style: 2 });
+  const U = [{ cells: ['Date paid', 'Amount (KES)', 'M-Pesa code', 'Name on statement', 'Phone', 'Source'], style: 1 }]; un.sort((a, b) => a.date.localeCompare(b.date)).forEach(p => U.push({ cells: [p.date, p.amount, p.code, p.payer, p.phone, p.src] }));
+  // reconciliation, period only
+  const names = {}; members.forEach(m => { names[key(m.memberName)] = m; });
+  const A = {}, get = m => (A[m.__id] = A[m.__id] || { m, stmIn: 0, sysIn: 0, stmCum: 0, sysCum: 0 });
+  pays.filter(p => p.m && catOk(p.m)).forEach(p => { if (p.date <= to) get(p.m).stmCum += p.amount; if (inP(p.date)) get(p.m).stmIn += p.amount; });
+  const addSys = (arr, df, af) => arr.forEach(r => { const m = names[key(r.memberName)]; if (!m || !catOk(m)) return; const d = d10(r[df]), a = nn(r[af]); if (d && d <= to) get(m).sysCum += a; if (inP(d)) get(m).sysIn += a; });
+  addSys(sys.contrib.filter(isSavRecOrShare), 'date', 'amount'); addSys(sys.repay, 'date', 'amountRepaid'); addSys(sys.fines, 'date', 'amount');
+  members.filter(catOk).forEach(m => { const lump = nn(m.registrationFee) + nn(m.shareCapital); if (lump > 0) { const d = d10(m.dateJoined); if (!d || d <= to) get(m).sysCum += lump; if (inP(d)) get(m).sysIn += lump; } });
+  const T = { ok: 0, timing: 0, more: 0, less: 0, check: 0 }, rows = [], stat = (a) => { const d = Math.round((a.sysIn - a.stmIn) * 100) / 100, c = Math.round((a.sysCum - a.stmCum) * 100) / 100; if (Math.abs(d) < 1 && Math.abs(c) < 1) { T.ok++; return 'Agrees'; } if (Math.abs(c) < 1) { T.timing++; return 'Timing only — recorded in a different month, totals agree'; } if (c > 0 && d >= 0) { T.more++; return 'AMEND: system has MORE than the statement — check double posting, wrong amount or cash paid outside the bank'; } if (c < 0 && d <= 0) { T.less++; return 'AMEND: statement has MORE than the system — post the payment to the member'; } T.check++; return 'CHECK: system and statement differ in this period and in total'; };
+  Object.values(A).filter(a => a.stmIn || a.sysIn || Math.abs(a.sysCum - a.stmCum) >= 1).sort((a, b) => mNo(a.m) - mNo(b.m)).forEach(a => { const st = stat(a); rows.push({ cells: [a.m.memberNumber || '', a.m.memberName || '', REG_LABELS[regStatusOf(a.m)] || '', a.stmIn, a.sysIn, Math.round((a.sysIn - a.stmIn) * 100) / 100, a.stmCum, a.sysCum, Math.round((a.sysCum - a.stmCum) * 100) / 100, st] }); });
+  const scope = (o.per === 'month' ? mon(o.val) : o.per === 'year' ? 'YEAR ' + o.val : 'ALL MONTHS') + ' — ' + (o.kind === 'all' ? 'all members' : (REG_LABELS[o.kind] || o.kind));
+  const tI = Object.values(A).reduce((x, a) => x + a.stmIn, 0), sI = Object.values(A).reduce((x, a) => x + a.sysIn, 0);
+  const C = [{ cells: ['RECONCILIATION — ' + scope, '', '', '', '', '', '', '', '', ''], style: 2 }, { cells: ['Statement total in period', '', '', tI, 'System total in period', sI, 'Difference', Math.round((sI - tI) * 100) / 100, '', ''], style: 2 }, { cells: ['Statement covers ' + (pays.length ? pays.map(p => p.date).sort()[0] + ' to ' + pays.map(p => p.date).sort().pop() : 'no payments') + '. The "to end of period" columns include earlier registration fees/shares, so if your statement starts later than the SACCO, treat only the in-period columns as final.', '', '', '', '', '', '', '', '', ''] },
+    { cells: ['Agree: ' + T.ok + ' · Timing only: ' + T.timing + ' · System MORE: ' + T.more + ' · Statement MORE: ' + T.less + ' · Check: ' + T.check, '', '', '', '', '', '', '', '', ''], style: 2 },
+    { cells: ['Member No.', 'Member name', 'Registration', 'Statement paid in period', 'System recorded in period', 'Difference (system − statement)', 'Statement to end of period', 'System to end of period', 'Difference to end', 'What to do'], style: 1 }].concat(rows);
+  return { bytes: xlBook([{ name: 'Payments by month', widths: [14, 34, 13, 14, 15, 32, 9], rows: R }, { name: 'Monthly summary', widths: [22, 16, 16, 18], rows: M }, { name: 'Reconciliation', widths: [14, 28, 18, 18, 18, 18, 18, 18, 16, 70], rows: C }, { name: 'Not matched to a member', widths: [13, 14, 15, 32, 15, 9], rows: U }]), payments: cnt, total: grand, unmatched: un.length, T, scope, stm: tI, sysT: sI };
+}
+function isSavRecOrShare(r) { return String((r && r.contributionType) || '') !== 'Other amount'; }
+async function stmtMonthRun(kind, per, val) {
+  const se = getSession(); if (!se || se.role !== 'admin') { alert('Only the Admin can use the statement.'); return; }
+  if (per !== 'all' && !val) { alert('Choose the ' + (per === 'month' ? 'month' : 'year') + '.'); return; }
+  const DATA = await stiLoadStatement(); if (!DATA) return;
+  const C = n => getCollectionEntries('tablebanking', n).catch(() => []);
+  const [members, al, contrib, repay, fines] = await Promise.all([getCollectionEntriesWithId('tablebanking', 'member-register'), aliasLoad().catch(() => null), C('contribution-record'), C('loan-repayment'), C('fines-penalties')]);
+  const r = stmtMonthBuild(DATA, members, al, { contrib, repay, fines }, { kind, per, val });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([r.bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); a.download = 'EKFS_Statement_By_Month_' + (per === 'all' ? 'all' : val) + '_' + kind + '.xlsx'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  alert('Excel ready — ' + r.scope + '\nStatement: ' + r.payments + ' payments, KES ' + r.total.toLocaleString() + '\nStatement vs system in this period: KES ' + r.stm.toLocaleString() + ' vs KES ' + r.sysT.toLocaleString() + '\nAgree ' + r.T.ok + ' · Timing only ' + r.T.timing + ' · System more ' + r.T.more + ' · Statement more ' + r.T.less + ' · Check ' + r.T.check + '\nSee the Reconciliation sheet for what to amend.');
 }
 
 // ===== Share transfer between members (Admin) =====
@@ -4029,7 +4074,7 @@ function otOpen() {
   const r = otRole(), staff = ['admin', 'chairperson', 'official', 'bookkeeper'].includes(r), top = ['admin', 'chairperson'].includes(r);
   if (!staff) { alert('Office tools are for the Admin, Chairperson, Officials and Bookkeeper.'); return; }
   const items = [
-    ['br', '🏦', 'Bank reconciliation', 'Bank Reconciliation Statement or Profit & Loss (SACCO format), monthly or annual, with areas to amend', top || r === 'bookkeeper'],
+    ['br', '🏦', 'Bank reconciliation', 'Bank Reconciliation Statement or Profit & Loss (SACCO format), monthly or annual, with areas to amend', top],
     ['rr', '🧾', 'Receipt register', 'All receipts issued, daily totals, print or Excel', true],
     ['mc', '🔒', 'Month-end closing', 'Check a month, then lock it', true],
     ['ar', '⏰', 'Savings arrears & reminders', 'Who missed KES 200 a month, with WhatsApp message', true],
@@ -4045,7 +4090,7 @@ function otOpen() {
   ov.querySelectorAll('.otGo').forEach(b => b.onclick = () => fn[b.dataset.k]().catch(e => alert('Could not open: ' + e.message)));
 }
 
-/* ===== Bank reconciliation & SACCO statements (build CM) ===== */
+/* ===== Bank reconciliation & SACCO statements (build CO) ===== */
 var BR_RULES = [['Personnel expenses', /salar|wage|stipend|allowance|payroll|bookkeeper|clerk|casual|staff/i], ['Governance expenses', /board|committee|agm|general meeting|meeting|sitting|honorari|delegat|election|supervis/i], ['Marketing expenses', /advert|marketing|publicity|banner|poster|ushirika|promotion|flyer|brand|t-?shirt|radio/i], ['Depreciation and amortisation', /depreciat|amortis/i]];
 function brCat(item) { const t = String(item || ''); for (const r of BR_RULES) if (r[1].test(t)) return r[0]; return 'Other administrative expenses'; }
 function brD10(s) { return String(s || '').slice(0, 10); }
@@ -4127,10 +4172,11 @@ function brCompute(D, B, per, man) {
     const s = Math.round((sys[k] || 0) * 100) / 100, t = Math.round((stm[k] || 0) * 100) / 100, df = Math.round((s - t) * 100) / 100; if (Math.abs(df) < 1) return;
     const m = names[k], vr = m && D.ver.find(v => v.memberId === m.__id), verified = !!(vr && s <= (parseFloat(vr.total) || 0) + 0.5);
     const row = { no: m ? m.memberNumber || '' : '', name: m ? m.memberName : k, sys: s, stm: t, diff: df, sysIn: Math.round((sysIn[k] || 0) * 100) / 100, stmIn: Math.round((stmIn[k] || 0) * 100) / 100, verified };
+    if (per.cat && per.cat !== 'all' && !(m && regStatusOf(m) === per.cat)) return;
     (df > 0 ? more : less).push(row);
   });
   more.sort((a, b) => b.diff - a.diff); less.sort((a, b) => a.diff - b.diff);
-  const noCode = B.R.filter(x => !x.ref && !x.lump && x.kind !== 'Other amount' && inP(x.date));
+  const noCode = B.R.filter(x => !x.ref && !x.lump && x.kind !== 'Other amount' && inP(x.date) && (!per.cat || per.cat === 'all' || (names[key(x.who)] && regStatusOf(names[key(x.who)]) === per.cat)));
   // month table
   const mrows = per.months.map(mo => { const a = B.R.filter(x => x.date && x.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0), b = B.credits.filter(c => c.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0), pay = B.P.filter(x => x.date && x.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0), dbt = B.debits.filter(c => c.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0); return { mo, sysIn: a, bankIn: b, sysOut: pay, bankOut: dbt, diff: Math.round((a - b) * 100) / 100 }; });
   const covered = B.haveStmt ? mrows.some(r => r.bankIn > 0 || r.bankOut > 0) : false;
@@ -4236,12 +4282,12 @@ function brXls(kind, per, r, F, p) {
   return xlBook(sheets);
 }
 async function brOpen() {
-  const role = otRole(); if (!['admin', 'chairperson', 'bookkeeper'].includes(role)) { alert('Bank reconciliation is for the Admin, Chairperson and Bookkeeper.'); return; }
+  const role = otRole(); if (!['admin', 'chairperson'].includes(role)) { alert('Bank reconciliation is for the Admin and Chairperson only.'); return; }
   const now = new Date(), curMonth = now.toISOString().slice(0, 7), curYear = String(now.getFullYear());
   const inp = 'padding:9px;border:1px solid #bbb;border-radius:8px;font-size:14px;';
   const ov = otModal('🏦 Bank reconciliation', '<div style="font-size:12.5px;color:#555;margin:4px 0">Choose the statement and the period. The system checks the cash book against your bank / M-Pesa statement and tells you exactly what to amend.</div>' +
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0"><label style="font-size:12px;font-weight:700">Statement<br><select id="brT" style="' + inp + 'width:100%"><option value="brs">Bank Reconciliation Statement</option><option value="pl">Profit &amp; Loss — Statement of Comprehensive Income</option></select></label>' +
-    '<label style="font-size:12px;font-weight:700">Period<br><select id="brK" style="' + inp + 'width:100%"><option value="month">Monthly</option><option value="year">Annual</option></select></label></div>' +
+    '<label style="font-size:12px;font-weight:700">Period<br><select id="brK" style="' + inp + 'width:100%"><option value="month">Monthly</option><option value="year">Annual</option></select></label></div>' + '<label style="font-size:12px;font-weight:700;display:block">Members to check<br><select id="brC" style="' + inp + 'width:100%"><option value="all">All members</option><option value="full">Fully registered only</option><option value="partial">Partially registered only</option><option value="feeonly">Fee only</option></select></label>' +
     '<div id="brPer" style="margin:6px 0"></div><div id="brSt" style="font-size:12.5px;margin:6px 0"></div>' +
     '<button type="button" id="brGo" class="btn-primary" style="width:100%;padding:12px;font-size:15px;font-weight:800">▶ Run reconciliation</button><div id="brOut" style="margin-top:10px"></div>');
   const q = s => ov.querySelector(s); let cache = null;
@@ -4251,7 +4297,7 @@ async function brOpen() {
   const run = async (manIn) => {
     const type = q('#brT').value, kind = q('#brK').value, val = q('#brV').value; if (!val) { alert('Choose the period.'); return; }
     const out = q('#brOut'); out.innerHTML = 'Reading the system…';
-    const D = await brLoad(), B = brBuild(D), per = brPeriod(kind, val), metaKey = (type === 'brs' ? 'brs-' : 'pl-') + per.key;
+    const D = await brLoad(), B = brBuild(D), per = Object.assign(brPeriod(kind, val), { cat: q('#brC').value }), metaKey = (type === 'brs' ? 'brs-' : 'pl-') + per.key;
     let man = manIn; if (!man) { try { const s = await otCol('ekfs_meta').doc(metaKey).get(); man = s.exists ? s.data() : {}; } catch (e) { man = {}; } }
     let html = '', res, F, pl;
     if (type === 'brs') {
@@ -7301,7 +7347,7 @@ function cardNavSetup() {
   if ((getSession() || {}).role === 'admin' && !document.getElementById('stiNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'stiNavBtn'; b.textContent = '📥 Statement import'; b.style.cssText = 'flex:0 0 auto;background:#1f3864!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', stiOpen); nav.appendChild(b); }
   if ((getSession() || {}).role === 'admin' && !document.getElementById('rnNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'rnNavBtn'; b.textContent = '🔢 Member numbers'; b.style.cssText = 'flex:0 0 auto;background:#4a148c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', rnOpen); nav.appendChild(b); }
   if ((getSession() || {}).role === 'admin' && !document.getElementById('stNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'stNavBtn'; b.textContent = '🔁 Share transfer'; b.style.cssText = 'flex:0 0 auto;background:#1f3864!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', stOpen); nav.appendChild(b); }
-  if (['admin', 'chairperson', 'official', 'bookkeeper'].includes((getSession() || {}).role) && !document.getElementById('otNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'otNavBtn'; b.textContent = '🗂 Office tools'; b.style.cssText = 'flex:0 0 auto;background:#00695c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', otOpen); nav.appendChild(b); if (['admin', 'chairperson', 'bookkeeper'].includes((getSession() || {}).role) && !document.getElementById('brNavBtn')) { const bb = document.createElement('button'); bb.type = 'button'; bb.id = 'brNavBtn'; bb.textContent = '🏦 Bank reconciliation'; bb.style.cssText = 'flex:0 0 auto;background:#1b5e20!important;color:#fff!important;border-radius:24px;'; bb.addEventListener('click', () => brOpen().catch(e => alert('Could not open: ' + e.message))); nav.appendChild(bb); } setTimeout(() => { try { bkBanner(); } catch (e) {} }, 1500); }
+  if (['admin', 'chairperson', 'official', 'bookkeeper'].includes((getSession() || {}).role) && !document.getElementById('otNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'otNavBtn'; b.textContent = '🗂 Office tools'; b.style.cssText = 'flex:0 0 auto;background:#00695c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', otOpen); nav.appendChild(b); if (['admin', 'chairperson'].includes((getSession() || {}).role) && !document.getElementById('brNavBtn')) { const bb = document.createElement('button'); bb.type = 'button'; bb.id = 'brNavBtn'; bb.textContent = '🏦 Bank reconciliation'; bb.style.cssText = 'flex:0 0 auto;background:#1b5e20!important;color:#fff!important;border-radius:24px;'; bb.addEventListener('click', () => brOpen().catch(e => alert('Could not open: ' + e.message))); nav.appendChild(bb); } setTimeout(() => { try { bkBanner(); } catch (e) {} }, 1500); }
   if (['admin', 'chairperson', 'official'].includes((getSession() || {}).role) && !document.getElementById('msNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'msNavBtn'; b.textContent = '📑 Membership summary'; b.style.cssText = 'flex:0 0 auto;background:#37474f!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', msOpen); nav.appendChild(b); }
   if (['admin', 'chairperson', 'official'].includes((getSession() || {}).role) && !document.getElementById('dpNavBtn')) { const b = document.createElement('button'); b.type = 'button'; b.id = 'dpNavBtn'; b.textContent = '🔍 Duplicates'; b.style.cssText = 'flex:0 0 auto;background:#b71c1c!important;color:#fff!important;border-radius:24px;'; b.addEventListener('click', dpOpen); nav.appendChild(b); }
   { const w = nav.querySelector('[data-v=ward]'); if (w) { let ref = w; ['idcNavBtn', 'crqNavBtn', 'attNavBtn', 'scanNavBtn'].forEach(id => { const b = document.getElementById(id); if (b) { if (ref.nextElementSibling !== b) ref.after(b); ref = b; } }); } }
