@@ -904,7 +904,7 @@
   #appShell .layout .panel, #appShell #memberViewContainer .panel{background:#f3f7f4;border:none;border-radius:16px;box-shadow:none;}
   #appShell footer.appfoot{color:#a9c4b2;}
   #appShell footer.appfoot b{color:#5fd08f;}
-  /* ---------- Classy member portal (build CP) ---------- */
+  /* ---------- Classy member portal (build CQ) ---------- */
   body.mh-member header.topbar{background:linear-gradient(135deg,#050f09,#0f3d27) !important;}
   body.mh-member #appShell{background:linear-gradient(#050f09,#0a2a1a);}
   body.mh-member #memberViewContainer .btn-primary{background:#0f3d27;}
@@ -1076,7 +1076,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CP</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CQ</span></p>
   </div>
 </div>
 
@@ -4090,7 +4090,7 @@ function otOpen() {
   ov.querySelectorAll('.otGo').forEach(b => b.onclick = () => fn[b.dataset.k]().catch(e => alert('Could not open: ' + e.message)));
 }
 
-/* ===== Bank reconciliation & SACCO statements (build CP) ===== */
+/* ===== Bank reconciliation & SACCO statements (build CQ) ===== */
 var BR_RULES = [['Personnel expenses', /salar|wage|stipend|allowance|payroll|bookkeeper|clerk|casual|staff/i], ['Governance expenses', /board|committee|agm|general meeting|meeting|sitting|honorari|delegat|election|supervis/i], ['Marketing expenses', /advert|marketing|publicity|banner|poster|ushirika|promotion|flyer|brand|t-?shirt|radio/i], ['Depreciation and amortisation', /depreciat|amortis/i]];
 function brCat(item) { const t = String(item || ''); for (const r of BR_RULES) if (r[1].test(t)) return r[0]; return 'Other administrative expenses'; }
 function brD10(s) { return String(s || '').slice(0, 10); }
@@ -4724,9 +4724,10 @@ async function sgOpen() {
     ov.querySelectorAll('.sgDel').forEach(b => b.onclick = () => { draft[b.dataset.k] = Object.assign({}, draft[b.dataset.k], { img: '' }); draw(); });
     ov.querySelectorAll('.sgFile').forEach(f => f.onchange = async () => { if (!f.files[0]) return; try { const img = await sigProcess(f.files[0], f.dataset.k === 'stamp' ? 420 : 360, f.dataset.k === 'stamp' ? 'stamp' : ''); draft[f.dataset.k] = Object.assign({}, draft[f.dataset.k], { img }); draw(); } catch (e) { alert(e.message); } }); };
   draw();
-  ov.querySelector('#sgSave').onclick = async () => { const rec = { on: ov.querySelector('#sgOn').checked, notices: ov.querySelector('#sgNo').checked, by: getSession().username, at: new Date().toISOString() }; SIG_ROLES.forEach(r => { rec[r[0]] = { name: (draft[r[0]] || {}).name || r[2], img: (draft[r[0]] || {}).img || '' }; }); rec.stamp = { img: (draft.stamp || {}).img || '' };
+  ov.querySelector('#sgSave').onclick = async () => { const sb = ov.querySelector('#sgSave'), mm = ov.querySelector('#sgM'); sb.disabled = true; const sbt = sb.textContent; sb.textContent = 'Saving…'; if (mm) mm.textContent = 'Saving…'; try { await sgSaveNow(); } catch (e) { const em = String(e && e.message || e); const msg = /permission|insufficient/i.test(em) ? 'The database refused the save (permissions). Check you are logged in as Admin and that your Firestore rules allow ekfs_meta.' : /timeout/i.test(em) ? 'The save did not finish — your internet may be weak. Try again on a stronger connection.' : em; if (mm) mm.textContent = '✖ ' + msg; alert('Could not save the signatures/stamp:\n' + msg); } sb.disabled = false; sb.textContent = sbt; };
+  const sgSaveNow = async () => { const rec = { on: ov.querySelector('#sgOn').checked, notices: ov.querySelector('#sgNo').checked, by: getSession().username, at: new Date().toISOString() }; SIG_ROLES.forEach(r => { rec[r[0]] = { name: (draft[r[0]] || {}).name || r[2], img: (draft[r[0]] || {}).img || '' }; }); rec.stamp = { img: (draft.stamp || {}).img || '' };
     if (JSON.stringify(rec).length > 900000) { alert('Signature images are too large. Use smaller images.'); return; }
-    await otCol('ekfs_meta').doc('signatures').set(rec); try { auditLog('signatures updated', 'ekfs_meta', 'signatures', SIG_ROLES.map(r => r[1] + (rec[r[0]].img ? '✔' : '–')).join(' ') + ' stamp' + (rec.stamp.img ? '✔' : '–')); } catch (e) {} await sigLoad(); ov.querySelector('#sgM').textContent = '✔ Saved'; };
+    await Promise.race([otCol('ekfs_meta').doc('signatures').set(rec), new Promise((_, rj) => setTimeout(() => rj(new Error('timeout')), 20000))]); try { auditLog('signatures updated', 'ekfs_meta', 'signatures', SIG_ROLES.map(r => r[1] + (rec[r[0]].img ? '✔' : '–')).join(' ') + ' stamp' + (rec.stamp.img ? '✔' : '–')); } catch (e) {} await sigLoad(); ov.querySelector('#sgM').textContent = '✔ Saved'; alert('✔ Saved. Signatures' + (rec.stamp.img ? ' and stamp' : '') + ' are now active on printed documents.'); };
 }
 
 function setupPrintButtons() {
