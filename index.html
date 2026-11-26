@@ -904,7 +904,7 @@
   #appShell .layout .panel, #appShell #memberViewContainer .panel{background:#f3f7f4;border:none;border-radius:16px;box-shadow:none;}
   #appShell footer.appfoot{color:#a9c4b2;}
   #appShell footer.appfoot b{color:#5fd08f;}
-  /* ---------- Classy member portal (build CQ) ---------- */
+  /* ---------- Classy member portal (build CR) ---------- */
   body.mh-member header.topbar{background:linear-gradient(135deg,#050f09,#0f3d27) !important;}
   body.mh-member #appShell{background:linear-gradient(#050f09,#0a2a1a);}
   body.mh-member #memberViewContainer .btn-primary{background:#0f3d27;}
@@ -1076,7 +1076,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CQ</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CR</span></p>
   </div>
 </div>
 
@@ -4090,7 +4090,7 @@ function otOpen() {
   ov.querySelectorAll('.otGo').forEach(b => b.onclick = () => fn[b.dataset.k]().catch(e => alert('Could not open: ' + e.message)));
 }
 
-/* ===== Bank reconciliation & SACCO statements (build CQ) ===== */
+/* ===== Bank reconciliation & SACCO statements (build CR) ===== */
 var BR_RULES = [['Personnel expenses', /salar|wage|stipend|allowance|payroll|bookkeeper|clerk|casual|staff/i], ['Governance expenses', /board|committee|agm|general meeting|meeting|sitting|honorari|delegat|election|supervis/i], ['Marketing expenses', /advert|marketing|publicity|banner|poster|ushirika|promotion|flyer|brand|t-?shirt|radio/i], ['Depreciation and amortisation', /depreciat|amortis/i]];
 function brCat(item) { const t = String(item || ''); for (const r of BR_RULES) if (r[1].test(t)) return r[0]; return 'Other administrative expenses'; }
 function brD10(s) { return String(s || '').slice(0, 10); }
@@ -4139,9 +4139,15 @@ function brCompute(D, B, per, man) {
   const outK = kd => B.P.filter(x => upto(x.date) && x.kind === kd).reduce((a, x) => a + x.amt, 0), cbLoans = outK('Loan disbursed (net of fees)'), cbExp = outK('Expenditure'), cbOth = outK('Other expense');
   // bank credits not in the system
   const refless = B.R.filter(x => !x.ref && !x.lump && upto(x.date)), used = new Set();
-  const unCred = [];
+  const unCred = [], recNoCode = [], key0 = s => String(s || '').trim().toLowerCase(), sysT = {}, stmT = {}, verOk = new Set();
+  B.R.filter(x => x.kind !== 'Other amount' && x.who).forEach(x => { if (upto(x.date)) sysT[key0(x.who)] = (sysT[key0(x.who)] || 0) + x.amt; });
+  B.credits.filter(c => c.m && c.date <= E).forEach(c => { const k0 = key0(c.m.memberName); stmT[k0] = (stmT[k0] || 0) + c.amt; });
+  D.members.forEach(m => { const vr = D.ver.find(v => v.memberId === m.__id); if (vr && (sysT[key0(m.memberName)] || 0) <= (parseFloat(vr.total) || 0) + 0.5) verOk.add(key0(m.memberName)); });
+  const covered0 = k0 => verOk.has(k0) || (sysT[k0] || 0) + 0.5 >= (stmT[k0] || 0);
   B.credits.filter(c => c.date <= E).forEach(c => {
     if (sysRefs.has(c.ref)) return;
+    if (c.m && covered0(key0(c.m.memberName))) { recNoCode.push(c); return; }
+    if (!c.m) { const t = tok(c.who), i = refless.findIndex((x, ix) => !used.has(ix) && Math.abs(x.amt - c.amt) < 0.5 && x.date && Math.abs((new Date(x.date) - new Date(c.date)) / 864e5) <= 7 && tokCount(t, tok(x.who)) >= 2); if (i >= 0) { used.add(i); recNoCode.push(c); return; } }
     if (c.m) { const i = refless.findIndex((x, ix) => !used.has(ix) && x.who === c.m.memberName && Math.abs(x.amt - c.amt) < 0.5 && x.date && Math.abs((new Date(x.date) - new Date(c.date)) / 864e5) <= 7); if (i >= 0) { used.add(i); return; } }
     unCred.push(Object.assign({ pending: inboxBy[c.ref] === 'Pending' }, c));
   });
@@ -4181,7 +4187,7 @@ function brCompute(D, B, per, man) {
   // month table
   const mrows = per.months.map(mo => { const a = B.R.filter(x => x.date && x.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0), b = B.credits.filter(c => c.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0), pay = B.P.filter(x => x.date && x.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0), dbt = B.debits.filter(c => c.date.slice(0, 7) === mo).reduce((s, x) => s + x.amt, 0); return { mo, sysIn: a, bankIn: b, sysOut: pay, bankOut: dbt, diff: Math.round((a - b) * 100) / 100 }; });
   const covered = B.haveStmt ? mrows.some(r => r.bankIn > 0 || r.bankOut > 0) : false;
-  return { per, CB, cbIn, cbOut, cbLoans, cbExp, cbOth, addUnpres, addDep, intCr, lessTransit, debNotBook, charges, intDr, expected, actual, auto, diff, unCred, transit, notOnStmt, before, unPay, unDeb, more, less, noCode, mrows, covered, span: B.span, haveDebits: B.haveDebits, haveStmt: B.haveStmt, manual: man };
+  return { per, CB, cbIn, cbOut, recNoCode, cbLoans, cbExp, cbOth, addUnpres, addDep, intCr, lessTransit, debNotBook, charges, intDr, expected, actual, auto, diff, unCred, transit, notOnStmt, before, unPay, unDeb, more, less, noCode, mrows, covered, span: B.span, haveDebits: B.haveDebits, haveStmt: B.haveStmt, manual: man };
 }
 function brPL(D, B, per, man) {
   const n = otNum, S = per.from, E = per.to, inP = d => d && d >= S && d <= E, d10 = brD10;
@@ -4216,6 +4222,7 @@ function brFlagsBRS(r, B) {
   else {
     if (r.span && r.span.to < r.per.to) F.push({ lvl: 'amber', t: 'The statement ends on ' + r.span.to + ', before the period end (' + r.per.to + '). Load a newer statement.', rows: [], heads: [] });
     if (r.span && r.span.from > r.per.from) F.push({ lvl: 'amber', t: 'The statement starts on ' + r.span.from + ', after the period start (' + r.per.from + '). Earlier money cannot be checked.', rows: [], heads: [] });
+    if (r.recNoCode && r.recNoCode.length) F.push({ lvl: 'info', t: r.recNoCode.length + ' bank payment(s) are already recorded for the member but without the M-Pesa code (older records or verified members) — KES ' + k(r.recNoCode.reduce((a, c) => a + c.amt, 0)) + '. Counted as recorded.', rows: r.recNoCode.map(c => [c.date, c.ref, c.who || (c.m && c.m.memberName) || '', k(c.amt), c.src, 'Recorded, no code']), heads: ['Date', 'Code', 'Paid by', 'Amount', 'Source', 'Status'] });
     if (r.unCred.length) F.push({ lvl: 'red', t: r.unCred.length + ' payment(s) are on the bank statement but NOT in the system — KES ' + k(r.addDep) + '. Record them (Statement import / M-Pesa Inbox).', rows: r.unCred.map(c => [c.date, c.ref, c.who || (c.m && c.m.memberName) || '', k(c.amt), c.src, c.pending ? 'In M-Pesa Inbox, not posted' : 'Not recorded']), heads: ['Date', 'Code', 'Paid by', 'Amount', 'Source', 'Status'] });
     const sysNot = r.notOnStmt.concat(r.transit); if (sysNot.length) F.push({ lvl: 'red', t: sysNot.length + ' receipt(s) with an M-Pesa code are in the system but NOT on the statement — KES ' + k(sysNot.reduce((a, x) => a + x.amt, 0)) + '. Check the code and amount, or the receipt may be wrong.', rows: sysNot.map(x => [x.date, x.ref, x.who, k(x.amt), x.kind, (x.date > (r.span ? r.span.to : '')) ? 'After statement end (in transit)' : 'Inside statement period']), heads: ['Date', 'Code', 'Member', 'Amount', 'Type', 'Note'] });
   }
