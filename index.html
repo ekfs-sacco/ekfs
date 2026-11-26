@@ -4139,7 +4139,7 @@ function brCompute(D, B, per, man) {
   const outK = kd => B.P.filter(x => upto(x.date) && x.kind === kd).reduce((a, x) => a + x.amt, 0), cbLoans = outK('Loan disbursed (net of fees)'), cbExp = outK('Expenditure'), cbOth = outK('Other expense');
   // bank credits not in the system
   const refless = B.R.filter(x => !x.ref && !x.lump && upto(x.date)), used = new Set();
-  const unCred = [], recNoCode = [], key0 = s => String(s || '').trim().toLowerCase(), sysT = {}, stmT = {}, verOk = new Set();
+  const tok = x => new Set(String(x || '').toLowerCase().replace(/[^a-z ]/g, '').split(/\s+/).filter(w => w.length > 1)), unCred = [], recNoCode = [], key0 = s => String(s || '').trim().toLowerCase(), sysT = {}, stmT = {}, verOk = new Set();
   B.R.filter(x => x.kind !== 'Other amount' && x.who).forEach(x => { if (upto(x.date)) sysT[key0(x.who)] = (sysT[key0(x.who)] || 0) + x.amt; });
   B.credits.filter(c => c.m && c.date <= E).forEach(c => { const k0 = key0(c.m.memberName); stmT[k0] = (stmT[k0] || 0) + c.amt; });
   D.members.forEach(m => { const vr = D.ver.find(v => v.memberId === m.__id); if (vr && (sysT[key0(m.memberName)] || 0) <= (parseFloat(vr.total) || 0) + 0.5) verOk.add(key0(m.memberName)); });
