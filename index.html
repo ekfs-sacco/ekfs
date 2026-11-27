@@ -904,7 +904,7 @@
   #appShell .layout .panel, #appShell #memberViewContainer .panel{background:#f3f7f4;border:none;border-radius:16px;box-shadow:none;}
   #appShell footer.appfoot{color:#a9c4b2;}
   #appShell footer.appfoot b{color:#5fd08f;}
-  /* ---------- Classy member portal (build CR) ---------- */
+  /* ---------- Classy member portal (build CS) ---------- */
   body.mh-member header.topbar{background:linear-gradient(135deg,#050f09,#0f3d27) !important;}
   body.mh-member #appShell{background:linear-gradient(#050f09,#0a2a1a);}
   body.mh-member #memberViewContainer .btn-primary{background:#0f3d27;}
@@ -1076,7 +1076,7 @@
       <div class="login-forgot">Forgot your password? Ask the group administrator to reset it for you.<br><a id="recForgotLink">Forgot Admin password? Use recovery code</a></div>
       <div class="login-back" id="backToLandingBtn">&larr; Back</div>
     </form>
-    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CR</span></p>
+    <p class="login-footnote">Secure access to the East Kamagak Farmers SACCO System<br>© 2026 East Kamagak Farmers SACCO. All rights reserved.<br><span style="opacity:.7">Version 15 Nov 2026 · build CS</span></p>
   </div>
 </div>
 
@@ -4090,7 +4090,7 @@ function otOpen() {
   ov.querySelectorAll('.otGo').forEach(b => b.onclick = () => fn[b.dataset.k]().catch(e => alert('Could not open: ' + e.message)));
 }
 
-/* ===== Bank reconciliation & SACCO statements (build CR) ===== */
+/* ===== Bank reconciliation & SACCO statements (build CS) ===== */
 var BR_RULES = [['Personnel expenses', /salar|wage|stipend|allowance|payroll|bookkeeper|clerk|casual|staff/i], ['Governance expenses', /board|committee|agm|general meeting|meeting|sitting|honorari|delegat|election|supervis/i], ['Marketing expenses', /advert|marketing|publicity|banner|poster|ushirika|promotion|flyer|brand|t-?shirt|radio/i], ['Depreciation and amortisation', /depreciat|amortis/i]];
 function brCat(item) { const t = String(item || ''); for (const r of BR_RULES) if (r[1].test(t)) return r[0]; return 'Other administrative expenses'; }
 function brD10(s) { return String(s || '').slice(0, 10); }
@@ -4151,6 +4151,7 @@ function brCompute(D, B, per, man) {
     if (c.m) { const i = refless.findIndex((x, ix) => !used.has(ix) && x.who === c.m.memberName && Math.abs(x.amt - c.amt) < 0.5 && x.date && Math.abs((new Date(x.date) - new Date(c.date)) / 864e5) <= 7); if (i >= 0) { used.add(i); return; } }
     unCred.push(Object.assign({ pending: inboxBy[c.ref] === 'Pending' }, c));
   });
+  const usedR = new Set(); recNoCode.forEach(c => { c.rid = ''; if (!c.m) return; let best = -1, bd = 1e9; B.R.forEach((x, ix) => { if (x.ref || x.lump || !x.id || x.kind === 'Other amount' || usedR.has(ix) || key0(x.who) !== key0(c.m.memberName) || Math.abs(x.amt - c.amt) >= 0.5) return; const dd = Math.abs((new Date(x.date || c.date) - new Date(c.date)) / 864e5); if (dd < bd) { bd = dd; best = ix; } }); if (best >= 0) { usedR.add(best); c.rid = B.R[best].id; } });
   const addDep = unCred.reduce((a, c) => a + c.amt, 0);
   // system receipts with M-Pesa code not on the statement
   const cs = B.span ? B.span.from : '', ce = B.span ? B.span.to : '';
@@ -4336,6 +4337,13 @@ async function brOpen() {
     html += '<div style="display:flex;gap:8px;margin-top:10px"><button type="button" id="brPr" class="btn-primary" style="flex:1;padding:11px">🖨 Print</button><button type="button" id="brXl" class="btn-secondary" style="flex:1;padding:11px">📊 Excel</button></div>';
     out.innerHTML = html;
     const title = (type === 'brs' ? 'Bank Reconciliation Statement — ' : 'Statement of Comprehensive Income — ') + per.label;
+    if (type === 'brs' && res.recNoCode && res.recNoCode.length) { const bx = document.createElement('div'); bx.style.cssText = 'margin:8px 0;padding:10px;border:2px solid #1565c0;border-radius:10px;background:#e3f2fd';
+      bx.innerHTML = '<button type="button" id="brAtt" class="btn-primary" style="width:100%;padding:12px;font-weight:800">🔗 Attach M-Pesa codes to the ' + res.recNoCode.length + ' recorded payments</button><div style="font-size:12px;margin-top:6px;color:#333">Writes the statement code onto the matching record (same member and amount). Where no single record matches, the code is marked as already recorded. No amounts are changed.</div><div id="brAttM" style="font-size:13px;font-weight:700;margin-top:6px"></div>';
+      out.insertBefore(bx, out.firstChild);
+      q('#brAtt').onclick = async () => { if (!confirm('Attach codes to ' + res.recNoCode.length + ' payments? No amounts will change.')) return; const m = q('#brAttM'), se = getSession(); let a = 0, l = 0, f = 0; q('#brAtt').disabled = true;
+        for (const c of res.recNoCode) { try { if (c.rid) { await otCol('contribution-record').doc(c.rid).update({ mpesaRef: c.ref }); a++; } else { await otCol('stmt-posted').doc(c.ref).set({ code: c.ref, member: c.m ? c.m.memberName : (c.who || ''), amount: c.amt, date: c.date, postedAt: new Date().toISOString(), by: se.username, note: 'Recorded earlier without code' }); l++; } } catch (e) { f++; } m.textContent = 'Working… ' + (a + l + f) + ' of ' + res.recNoCode.length; }
+        try { auditLog('codes attached', 'bank-reconciliation', per.key, a + ' on records, ' + l + ' marked recorded, ' + f + ' failed'); } catch (e) {}
+        alert('Done. ' + a + ' codes written onto records, ' + l + ' marked as recorded' + (f ? ', ' + f + ' failed (permissions?)' : '') + '.'); run().catch(() => {}); }; }
     q('#brPr').onclick = () => openPrintWindow(title, type === 'brs' ? brBrsPrint(res, F) : brPlPrint(pl, F));
     q('#brXl').onclick = () => { try { dcSave('EKFS_' + (type === 'brs' ? 'Bank_Reconciliation_' : 'Comprehensive_Income_') + per.key + '.xlsx', brXls(type, per, res, F, pl), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'); } catch (e) { alert('Could not build the Excel file: ' + e.message); } };
     q('#brRe2').onclick = async () => { const m = {}; out.querySelectorAll('input[id^="brM_"]').forEach(i => { m[i.id.slice(4)] = i.value; }); if (type === 'brs') { m.bankBal = m.bankBal; m.unpresented = m.unpresented; m.intCredited = m.intCredited; } try { const se = getSession(); await otCol('ekfs_meta').doc(metaKey).set(Object.assign({}, m, { by: se.username, at: new Date().toISOString(), provSet: true })); try { auditLog('saved reconciliation figures', 'ekfs_meta', metaKey, title); } catch (e) {} } catch (e) { alert('Could not save: ' + e.message); } const mm = Object.assign({}, m, { provSet: true }); run(type === 'brs' ? { bankBal: mm.bankBal, unpresented: mm.unpresented, intCredited: mm.intCredited, charges: mm.charges, intDebited: mm.intDebited } : mm); };
